@@ -8,9 +8,9 @@
  *  https://p1r.se/startmodule/implement-yourself/
  */
 
-typedef enum{
+typedef enum {
     STARTSTOP_OK = 0,
-    STARTSTOP_RUN, // Start fighting
+    STARTSTOP_RUN,  // Start fighting
     STARTSTOP_STOP,
     STARTSTOP_DOHYOERR,
     STARTSTOP_ADDRERR,
@@ -18,7 +18,6 @@ typedef enum{
 
 void startstop_init();
 
-StartStopRet startstop_run(Rc5Packet *rc5);
-
+StartStopRet startstop_run(Rc5Packet* rc5);
 
 #endif

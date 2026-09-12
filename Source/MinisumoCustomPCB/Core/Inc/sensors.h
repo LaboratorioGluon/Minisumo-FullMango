@@ -5,8 +5,7 @@
 #include "stm32h5xx_hal.h"
 #include "stm32h5xx_hal_adc.h"
 
-
-typedef enum{
+typedef enum {
     SENSOR_LINE_RIGHT = 0,
     SENSOR_SHARP_RIGHT,
     SENSOR_SHARP_LEFT,
@@ -18,10 +17,10 @@ typedef enum{
     SENSOR_ENUM_LEN
 } SensorResult;
 
-void sensors_init(ADC_HandleTypeDef *adc);
+void sensors_init(ADC_HandleTypeDef* adc);
 
 uint8_t sensors_isDataReady();
 
 uint16_t sensors_get(SensorResult sensor);
 
-#endif //SENSORS_H__
+#endif  //SENSORS_H__
