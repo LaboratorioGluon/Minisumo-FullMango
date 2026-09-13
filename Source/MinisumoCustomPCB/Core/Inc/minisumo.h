@@ -18,5 +18,6 @@ typedef struct {
 void minisumo_setup(MinisumoConfig* config);
 
 void minisumo_loop();
+void minisumo_loop_new();
 
 #endif  //MINISUMO_H__

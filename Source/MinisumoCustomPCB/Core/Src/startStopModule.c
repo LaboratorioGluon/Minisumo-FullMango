@@ -4,9 +4,6 @@
 #include <string.h>
 #include "stm32h5xx_hal_uart.h"
 
-#define ADDR_STARTSTOP 0x07
-#define ADDR_PROGRAMMING 0x0B
-
 uint8_t dohyoOff; /** Command to Stop */
 uint8_t dohyoOn;
 
@@ -46,7 +43,7 @@ StartStopRet startstop_run(Rc5Packet* rc5)
         snprintf(buf, 100, "[STARTSTOP]:: Updated DOHYO to: %d AND %d!\r\n",
                  dohyoOff, dohyoOn);
         HAL_UART_Transmit(&huart5, buf, strlen(buf), 200);
-        return STARTSTOP_OK;
+        return STARTSTOP_PROGRAM_OK;
         // TODO: store dohyoOff command.
     }
     else {

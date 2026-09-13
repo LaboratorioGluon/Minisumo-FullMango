@@ -27,6 +27,7 @@
 #include "minisumo.h"
 #include "motor.h"
 #include "sensors.h"
+#include "status.h"
 #include "stm32h523xx.h"
 #include "stm32h5xx_hal.h"
 #include "stm32h5xx_hal_adc.h"
@@ -155,9 +156,6 @@ int main(void)
 
     HAL_GPIO_WritePin(MOTOR_ENABLE_GPIO_Port, MOTOR_ENABLE_Pin, GPIO_PIN_SET);
 
-    // HAL_GPIO_WritePin(GPIOA, GPIO_PIN_9, GPIO_PIN_RESET);
-    // HAL_GPIO_WritePin(GPIOA, GPIO_PIN_12, GPIO_PIN_SET);
-
     HAL_TIM_Base_Start(&htim6);
 
     /* USER CODE END 2 */
@@ -167,13 +165,15 @@ int main(void)
 
     HAL_TIM_PWM_Start(&htim1, TIM_CHANNEL_2);
     HAL_TIM_PWM_Start(&htim1, TIM_CHANNEL_3);
-
+    status_rawLeds((Rgb){0, 0, 0}, (Rgb){0, 0, 0});
+    HAL_Delay(1000);
     sensors_init(&hadc1);
+    status_rawLeds((Rgb){0, 20, 0}, (Rgb){0, 0, 0});
 
     while (1) {
         //HAL_UART_Transmit(&huart5, "Hola soy Minisumo!\n", 20, 1000);
 
-        minisumo_loop();
+        minisumo_loop_new();
         /* USER CODE END WHILE */
 
         /* USER CODE BEGIN 3 */

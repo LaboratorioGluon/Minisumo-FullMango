@@ -40,6 +40,7 @@ void wsled_init(WsLed* ws);
 void wsled_sendRgb(WsLed* ws, Rgb* rgb, uint32_t numLeds);
 void wsled_sendBytes(WsLed* ws, uint16_t* wsData, uint32_t numBytes);
 
-void wsled_genData(WsLed* ws, Rgb* rgb, uint16_t* wsData, uint32_t numLeds);
+void wsled_genData(WsLed* ws, Rgb* rgb, uint16_t* wsData, uint32_t numLeds,
+                   uint32_t zerosCount);
 
 #endif  // WSLED_H__

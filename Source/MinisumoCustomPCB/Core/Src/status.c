@@ -7,12 +7,18 @@
 #define STATUS_NUM_LEDS (2)
 #define BITS_PER_LED (24)
 
-#define PWM_NUM_TAIL_BIT (1)
+#define PWM_NUM_TAIL_BIT (5)
 
 static WsLed    leds;
 static uint16_t pwmData[STATUS_NUM_LEDS * BITS_PER_LED + PWM_NUM_TAIL_BIT];
 
-Rgb colors[2] = {{5, 0, 0}, {5, 0, 0}};
+Rgb colors[STATUS_NUM_LEDS] = {{5, 0, 0}, {5, 0, 0}};
+
+static void status_outputData()
+{
+    wsled_genData(&leds, colors, pwmData, STATUS_NUM_LEDS, PWM_NUM_TAIL_BIT);
+    wsled_sendBytes(&leds, pwmData, sizeof(pwmData));
+}
 
 void status_init(StatusConfig* config)
 {
@@ -23,19 +29,22 @@ void status_init(StatusConfig* config)
 
     wsled_init(&leds);
 
-    pwmData[STATUS_NUM_LEDS * BITS_PER_LED] = 0;
-
-    wsled_genData(&leds, colors, pwmData, 2);
+    wsled_genData(&leds, colors, pwmData, STATUS_NUM_LEDS, PWM_NUM_TAIL_BIT);
 
     HAL_TIM_PWM_Start(config->tim, config->timChannel);
+}
+
+void status_setLed(LedId led, Rgb color)
+{
+    memcpy(&colors[led], (uint8_t*)&color, sizeof(Rgb));
+    status_outputData();
 }
 
 void status_rawLeds(Rgb a, Rgb b)
 {
     memcpy(&colors[0], (uint8_t*)&a, sizeof(Rgb));
     memcpy(&colors[1], (uint8_t*)&b, sizeof(Rgb));
-    wsled_genData(&leds, colors, pwmData, 2);
-    wsled_sendBytes(&leds, pwmData, sizeof(pwmData));
+    status_outputData();
 }
 
 void status_update(StatusInfo* info)
@@ -69,6 +78,6 @@ void status_update(StatusInfo* info)
     }
 
     memcpy(&colors[1], (uint8_t*)&info->led1rgb, sizeof(Rgb));
-    wsled_genData(&leds, colors, pwmData, 2);
+    wsled_genData(&leds, colors, pwmData, 2, PWM_NUM_TAIL_BIT);
     wsled_sendBytes(&leds, pwmData, sizeof(pwmData));
 }

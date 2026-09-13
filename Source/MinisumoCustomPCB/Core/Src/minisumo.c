@@ -11,6 +11,7 @@
 #include "stm32h5xx_hal.h"
 #include "stm32h5xx_hal_adc.h"
 #include "stm32h5xx_hal_uart.h"
+#include "wsLed.h"
 
 static StatusInfo info;
 
@@ -27,30 +28,114 @@ typedef enum {
     MOVE_RIGHT
 } MoveDirection;
 
+typedef void (*StateFunc)(void);
+
 struct {
     MoveDirection move;    // Current direction
     int32_t       timeMs;  // -1: move forever.
-} CurrentMove;
+} currentMove;
 
-void HAL_GPIO_EXTI_Rising_Callback(uint16_t GPIO_Pin)
+static void state_start(void);
+static void state_set_fight(void);
+static void state_stop(void);
+
+StateFunc currentStateFunc = state_start;
+
+static void state_set_stop(void)
 {
-    if (GPIO_Pin == rc5.init.pin) {
-        rc5_handleRising(&rc5);
+    motor_setDuty(&motorLeft, MOTOR_DIRECTION_FWD, 0);
+    motor_setDuty(&motorRight, MOTOR_DIRECTION_BCK, 0);
+    currentStateFunc = state_stop;
+    state_stop();
+}
+
+/**
+* Starting state. Wait for CONFIG or FIGHT commands.
+*/
+static void state_start(void)
+{
+    Rc5Packet    pkt;
+    Rc5Ret       ret       = rc5_getPkt(&rc5, &pkt);
+    StartStopRet startStop = STARTSTOP_OK;
+
+    if (ret == RC5_OK) {
+        switch (pkt.address) {
+            case ADDR_STARTSTOP:
+            case ADDR_PROGRAMMING:
+                startStop = startstop_run(&pkt);
+                break;
+            case ADDR_CUSTOM_PROG:
+                break;
+            default:
+                status_setLed(LED_B, (Rgb){0, 20, 0});
+                break;
+        }
+
+        switch (startStop) {
+            case STARTSTOP_RUN:
+                state_set_fight();
+                return;
+            case STARTSTOP_PROGRAM_OK:
+                status_setLed(LED_A, (Rgb){0, 0, 0});
+                break;
+        }
     }
 }
 
-void HAL_GPIO_EXTI_Falling_Callback(uint16_t GPIO_Pin)
+/**
+* Fight State. Look for the enemy and attack.
+*/
+static void state_fight(void)
 {
-    if (GPIO_Pin == rc5.init.pin) {
-        rc5_handleFalling(&rc5);
+    Rc5Packet    pkt;
+    Rc5Ret       ret       = rc5_getPkt(&rc5, &pkt);
+    StartStopRet startStop = STARTSTOP_OK;
+
+    if (ret == RC5_OK) {
+        switch (pkt.address) {
+            case ADDR_STARTSTOP:
+            case ADDR_PROGRAMMING:
+                startStop = startstop_run(&pkt);
+                break;
+            case ADDR_CUSTOM_PROG:
+                break;
+            default:
+                status_setLed(LED_B, (Rgb){0, 20, 0});
+                break;
+        }
+
+        if (startStop == STARTSTOP_STOP) {
+            state_set_stop();
+            return;
+        }
+    }
+
+    uint16_t sharp[3];
+    if (sensors_isDataReady() == 1) {
+        sharp[0] = sensors_get(SENSOR_SHARP_LEFT);
+        sharp[1] = sensors_get(SENSOR_SHARP_CENTER);
+        sharp[2] = sensors_get(SENSOR_SHARP_RIGHT);
     }
 }
-
-void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef* htim)
+static void state_set_fight(void)
 {
-    if (htim == rc5.init.tim) {
-        rc5_handleTimEvent(&rc5);
-    }
+    status_rawLeds((Rgb){20, 0, 0}, (Rgb){0, 0, 0});
+    currentStateFunc = state_fight;
+    currentStateFunc();
+}
+
+/**
+* Config State, For custom config commands.
+* - Used for calibration
+*/
+static void state_config(void) {}
+
+static void state_stop(void)
+{
+    status_rawLeds((Rgb){20, 0, 0}, (Rgb){0, 0, 0});
+    HAL_Delay(200);
+    status_rawLeds((Rgb){0, 0, 0}, (Rgb){0, 0, 0});
+    HAL_Delay(200);
 }
 
 void minisumo_setup(MinisumoConfig* config)
@@ -80,10 +165,16 @@ void minisumo_setup(MinisumoConfig* config)
     info.led2 = 0;
 }
 
+void minisumo_loop_new()
+{
+    currentStateFunc();
+}
+
 extern UART_HandleTypeDef huart5;
 #define MOTOR_CURRENT_SAMPLES 1
 uint32_t start;
-void     minisumo_loop()
+
+void minisumo_loop()
 {
 
     uint8_t           uartBuf[150] = "";
@@ -221,4 +312,25 @@ else
     // sensors_update();
 
     /** logic **/
+}
+
+void HAL_GPIO_EXTI_Rising_Callback(uint16_t GPIO_Pin)
+{
+    if (GPIO_Pin == rc5.init.pin) {
+        rc5_handleRising(&rc5);
+    }
+}
+
+void HAL_GPIO_EXTI_Falling_Callback(uint16_t GPIO_Pin)
+{
+    if (GPIO_Pin == rc5.init.pin) {
+        rc5_handleFalling(&rc5);
+    }
+}
+
+void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef* htim)
+{
+    if (htim == rc5.init.tim) {
+        rc5_handleTimEvent(&rc5);
+    }
 }

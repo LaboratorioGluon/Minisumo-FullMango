@@ -18,9 +18,13 @@ typedef struct {
     Rgb     led1rgb;
 } StatusInfo;
 
+typedef enum { LED_A = 0, LED_B } LedId;
+
 void status_init(StatusConfig* config);
 
 void status_update(StatusInfo* info);
 void status_rawLeds(Rgb a, Rgb b);
+
+void status_setLed(LedId led, Rgb color);
 
 #endif  //STATUS_H__
