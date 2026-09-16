@@ -13,12 +13,47 @@
 #include "stm32h5xx_hal_uart.h"
 #include "wsLed.h"
 
+#define MOTOR_MOVE_DUTY 60
+
+// TODO: Move to NVS
+#define LINE_LEFT_LIMIT 800
+#define LINE_RIGHT_LIMIT 800
+
+extern UART_HandleTypeDef huart5;
+
 static StatusInfo info;
 
 static ADC_HandleTypeDef* adc;
 static Rc5                rc5;
 static Motor              motorLeft, motorRight;
 static uint8_t            isFighting = 0;
+
+typedef enum {
+    ROBOT_MOVE_NONE = 0,
+    ROBOT_MOVE_FWD,
+    ROBOT_MOVE_RIGHT,
+    ROBOT_MOVE_LEFT
+} RobotDirection;
+
+struct {
+    MotorDirection left;
+    MotorDirection right;
+    uint32_t       duty;
+} RobotDirectionMotorMap[] = {
+    [ROBOT_MOVE_NONE]  = {MOTOR_DIRECTION_FWD, MOTOR_DIRECTION_FWD, 0U},
+    [ROBOT_MOVE_FWD]   = {MOTOR_DIRECTION_FWD, MOTOR_DIRECTION_FWD,
+                          MOTOR_MOVE_DUTY},
+    [ROBOT_MOVE_RIGHT] = {MOTOR_DIRECTION_FWD, MOTOR_DIRECTION_BCK,
+                          MOTOR_MOVE_DUTY},
+    [ROBOT_MOVE_LEFT]  = {MOTOR_DIRECTION_BCK, MOTOR_DIRECTION_FWD,
+                          MOTOR_MOVE_DUTY}};
+
+typedef enum {
+    DETECTED_LINE_NONE = 0,
+    DETECTED_LINE_LEFT,
+    DETECTED_LINE_RIGHT,
+    DETECTED_LINE_BOTH,
+} DetectedLine;
 
 typedef enum {
     MOVE_STOP = 0,
@@ -34,6 +69,33 @@ struct {
     MoveDirection move;    // Current direction
     int32_t       timeMs;  // -1: move forever.
 } currentMove;
+
+static void minisumo_move(RobotDirection dir)
+{
+    static RobotDirection lastDir = -1;
+    if (dir == lastDir) {
+        return;
+    }
+    motor_setDuty(&motorLeft, RobotDirectionMotorMap[dir].left,
+                  RobotDirectionMotorMap[dir].duty);
+    motor_setDuty(&motorRight, RobotDirectionMotorMap[dir].right,
+                  RobotDirectionMotorMap[dir].duty);
+}
+
+static DetectedLine minisumo_lineDetected(uint16_t line[2])
+{
+    DetectedLine ret = DETECTED_LINE_NONE;
+
+    if (line[0] < LINE_LEFT_LIMIT) {
+        ret = DETECTED_LINE_LEFT;
+    }
+    if (line[1] < LINE_RIGHT_LIMIT) {
+        ret = (ret == DETECTED_LINE_LEFT) ? DETECTED_LINE_BOTH
+                                          : DETECTED_LINE_RIGHT;
+    }
+
+    return ret;
+}
 
 static void state_start(void);
 static void state_set_fight(void);
@@ -80,11 +142,25 @@ static void state_start(void)
                 break;
         }
     }
+
+    uint16_t          sharp[3];
+    volatile uint16_t line[2];
+
+    if (sensors_isDataReady() == 1) {
+        /*sharp[0] = sensors_get(SENSOR_SHARP_LEFT);
+        sharp[1] = sensors_get(SENSOR_SHARP_CENTER);
+        sharp[2] = sensors_get(SENSOR_SHARP_RIGHT);*/
+        line[0] = sensors_get(SENSOR_LINE_LEFT);
+        line[1] = sensors_get(SENSOR_LINE_RIGHT);
+    }
+
+    HAL_Delay(10);
 }
 
 /**
 * Fight State. Look for the enemy and attack.
 */
+uint8_t     uartBuf[200];
 static void state_fight(void)
 {
     Rc5Packet    pkt;
@@ -111,11 +187,54 @@ static void state_fight(void)
     }
 
     uint16_t sharp[3];
+    uint16_t line[2];
+
     if (sensors_isDataReady() == 1) {
-        sharp[0] = sensors_get(SENSOR_SHARP_LEFT);
+        /*sharp[0] = sensors_get(SENSOR_SHARP_LEFT);
         sharp[1] = sensors_get(SENSOR_SHARP_CENTER);
-        sharp[2] = sensors_get(SENSOR_SHARP_RIGHT);
+        sharp[2] = sensors_get(SENSOR_SHARP_RIGHT);*/
+        line[0] = sensors_get(SENSOR_LINE_LEFT);
+        line[1] = sensors_get(SENSOR_LINE_RIGHT);
     }
+
+    DetectedLine detectedLine = minisumo_lineDetected(line);
+
+    snprintf((char*)uartBuf, 150, "$%d,%d;\r\n", line[0], line[1]);
+    HAL_UART_Transmit(&huart5, uartBuf, strlen((char*)uartBuf), 1000);
+
+    //if (line != DETECTED_LINE_NONE) {
+    if ((detectedLine != DETECTED_LINE_NONE) || true) {
+        switch (detectedLine) {
+            case DETECTED_LINE_NONE:
+                minisumo_move(ROBOT_MOVE_FWD);
+                break;
+            case DETECTED_LINE_LEFT:
+                snprintf((char*)uartBuf, 150, "$LINE_LEFT;\r\n");
+                HAL_UART_Transmit(&huart5, uartBuf, strlen((char*)uartBuf),
+                                  1000);
+
+                minisumo_move(ROBOT_MOVE_RIGHT);
+                HAL_Delay(100);
+                break;
+            case DETECTED_LINE_RIGHT:
+                snprintf((char*)uartBuf, 150, "$LINE_RIGHT;\r\n");
+                HAL_UART_Transmit(&huart5, uartBuf, strlen((char*)uartBuf),
+                                  1000);
+
+                minisumo_move(ROBOT_MOVE_LEFT);
+                HAL_Delay(100);
+                break;
+            case DETECTED_LINE_BOTH:
+                snprintf((char*)uartBuf, 150, "$LINE_BOTH;\r\n");
+                HAL_UART_Transmit(&huart5, uartBuf, strlen((char*)uartBuf),
+                                  1000);
+
+                minisumo_move(ROBOT_MOVE_RIGHT);
+                HAL_Delay(100);
+                break;
+        }
+    }
+    else {}
 }
 static void state_set_fight(void)
 {
@@ -170,7 +289,6 @@ void minisumo_loop_new()
     currentStateFunc();
 }
 
-extern UART_HandleTypeDef huart5;
 #define MOTOR_CURRENT_SAMPLES 1
 uint32_t start;
 

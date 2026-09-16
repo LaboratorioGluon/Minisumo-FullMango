@@ -112,8 +112,6 @@ void rc5_handleFalling(Rc5* dev)
     }
     else if (dev->irqStage == RC5_IRQ_WAIT_S2) {
 
-        //NVIC_DisableIRQ(dev->init.irq);
-
         HAL_TIM_Base_Start_IT(dev->init.tim);
 
         dev->timStage = RC5_TIM_WAIT_POST_S2;

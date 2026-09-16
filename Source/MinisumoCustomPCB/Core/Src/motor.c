@@ -9,16 +9,36 @@ void motor_init(Motor* dev)
 
 void motor_setDuty(Motor* dev, MotorDirection dir, uint32_t duty)
 {
-    uint32_t localDuty = duty;
+    uint32_t      localDutyFwd = duty;
+    uint32_t      localDutyBck = duty;
+    uint32_t      localDuty;
+    GPIO_PinState pinStateFwd;
+    GPIO_PinState pinStateBck;
 
-    if (dir == MOTOR_DIRECTION_FWD) {
-        HAL_GPIO_WritePin(dev->init.directionPort, dev->init.directionPin,
-                          GPIO_PIN_RESET);
+    if (dev->init.isReversed == 1) {
+        pinStateFwd  = GPIO_PIN_RESET;
+        pinStateBck  = GPIO_PIN_SET;
+        localDutyFwd = duty;
+        localDutyBck = 100 - duty;
     }
     else {
-        localDuty = 100 - duty;
+        pinStateFwd  = GPIO_PIN_SET;
+        pinStateBck  = GPIO_PIN_RESET;
+        localDutyFwd = 100 - duty;
+        localDutyBck = duty;
+    }
+
+    if (dir == MOTOR_DIRECTION_FWD) {
+        // If RESET/SET is swapped between directions
+        // Move the localDuty adjustment
+        localDuty = localDutyFwd;
         HAL_GPIO_WritePin(dev->init.directionPort, dev->init.directionPin,
-                          GPIO_PIN_SET);
+                          pinStateFwd);
+    }
+    else {
+        localDuty = localDutyBck;
+        HAL_GPIO_WritePin(dev->init.directionPort, dev->init.directionPin,
+                          pinStateBck);
     }
 
     if (localDuty <= MOTOR_DUTY_MAX_VALUE) {

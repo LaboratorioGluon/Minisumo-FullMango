@@ -148,10 +148,12 @@ int main(void)
     config.motorLeft.timerChannel   = TIM_CHANNEL_2;
     config.motorLeft.directionPort  = GPIOA;
     config.motorLeft.directionPin   = GPIO_PIN_12;
+    config.motorLeft.isReversed     = 0;
     config.motorRight.timer         = &htim1;
     config.motorRight.timerChannel  = TIM_CHANNEL_3;
     config.motorRight.directionPort = GPIOA;
     config.motorRight.directionPin  = GPIO_PIN_11;
+    config.motorRight.isReversed    = 1;
     minisumo_setup(&config);
 
     HAL_GPIO_WritePin(MOTOR_ENABLE_GPIO_Port, MOTOR_ENABLE_Pin, GPIO_PIN_SET);

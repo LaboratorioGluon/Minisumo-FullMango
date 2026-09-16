@@ -1,6 +1,7 @@
 #ifndef MOTOR_H__
 #define MOTOR_H__
 
+#include <stdint.h>
 #include <stm32h5xx_hal.h>
 #include <stm32h5xx_hal_gpio.h>
 #include <stm32h5xx_hal_tim.h>
@@ -12,6 +13,7 @@ typedef struct {
     uint32_t           timerChannel;
     GPIO_TypeDef*      directionPort;
     uint16_t           directionPin;
+    uint8_t            isReversed;
 } MotorConfig;
 
 typedef enum { MOTOR_DIRECTION_FWD = 0, MOTOR_DIRECTION_BCK } MotorDirection;
