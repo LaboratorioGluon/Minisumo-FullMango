@@ -23,6 +23,7 @@
 
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
+#include "motor.h"
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -79,13 +80,15 @@ void NMI_Handler(void)
     /* USER CODE END NonMaskableInt_IRQn 1 */
 }
 
+static Motor motorLeft, motorRight;
 /**
   * @brief This function handles Hard fault interrupt.
   */
 void HardFault_Handler(void)
 {
     /* USER CODE BEGIN HardFault_IRQn 0 */
-
+    motor_setDuty(&motorLeft, MOTOR_DIRECTION_FWD, 0);
+    motor_setDuty(&motorRight, MOTOR_DIRECTION_FWD, 0);
     /* USER CODE END HardFault_IRQn 0 */
     while (1) {
         /* USER CODE BEGIN W1_HardFault_IRQn 0 */

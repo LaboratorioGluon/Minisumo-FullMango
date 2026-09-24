@@ -23,10 +23,19 @@ typedef struct {
     MotorDirection direction;
     uint32_t       duty;  // 0..100
     uint32_t       reloadValue;
+
+    MotorDirection targetDirection;
+    uint32_t       currentSpeed;  // [0-100]
+    uint32_t       targetSpeed;   // [0-100]
+    uint32_t       maxRate;       // duty/ms
+    uint32_t       lastMs;        // [milliseconds]
 } Motor;
 
 void motor_init(Motor* dev);
 
 void motor_setDuty(Motor* dev, MotorDirection dir, uint32_t duty);
+void motor_setTarget(Motor* dev, MotorDirection dir, uint32_t dutyTarget);
+
+void motor_update(Motor* dev);
 
 #endif  // MOTOR_H__

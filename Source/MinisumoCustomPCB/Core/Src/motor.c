@@ -1,4 +1,7 @@
 #include "motor.h"
+#include <stdio.h>
+#include <string.h>
+#include "stm32h5xx_hal.h"
 #include "stm32h5xx_hal_gpio.h"
 #include "stm32h5xx_hal_tim_ex.h"
 
@@ -9,6 +12,7 @@ void motor_init(Motor* dev)
 
 void motor_setDuty(Motor* dev, MotorDirection dir, uint32_t duty)
 {
+    dev->currentSpeed          = duty;
     uint32_t      localDutyFwd = duty;
     uint32_t      localDutyBck = duty;
     uint32_t      localDuty;
@@ -46,4 +50,40 @@ void motor_setDuty(Motor* dev, MotorDirection dir, uint32_t duty)
         __HAL_TIM_SET_COMPARE(dev->init.timer, dev->init.timerChannel,
                               calculatedPwmValue);
     }
+}
+
+void motor_setTarget(Motor* dev, MotorDirection dir, uint32_t dutyTarget)
+{
+    dev->targetSpeed = dutyTarget;
+    if (dir != dev->targetDirection) {
+        dev->currentSpeed = 0;
+    }
+    dev->targetDirection = dir;
+    dev->lastMs          = HAL_GetTick();
+
+    return;
+}
+
+extern UART_HandleTypeDef huart5;
+static uint8_t            uartBuf[200];
+
+void motor_update(Motor* dev)
+{
+    uint32_t currentMs = HAL_GetTick();
+    uint32_t msDiff    = currentMs - dev->lastMs;
+    uint32_t dutyDiff  = dev->targetSpeed - dev->currentSpeed;
+    if (dutyDiff > dev->maxRate * msDiff) {
+        dev->currentSpeed += dev->maxRate * msDiff;
+    }
+    else {
+        dev->currentSpeed = dev->targetSpeed;
+    }
+    motor_setDuty(dev, dev->targetDirection, dev->currentSpeed);
+    snprintf((char*)uartBuf, 150, "$%lu,%lu;%lu;%lu;\r\n", currentMs,
+             dev->lastMs, dutyDiff, dev->currentSpeed);
+
+    HAL_UART_Transmit(&huart5, uartBuf, strlen((char*)uartBuf), 1000);
+    dev->lastMs = currentMs;
+
+    return;
 }

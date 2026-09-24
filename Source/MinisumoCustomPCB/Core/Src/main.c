@@ -165,10 +165,8 @@ int main(void)
     /* Infinite loop */
     /* USER CODE BEGIN WHILE */
 
-    HAL_TIM_PWM_Start(&htim1, TIM_CHANNEL_2);
-    HAL_TIM_PWM_Start(&htim1, TIM_CHANNEL_3);
-    status_rawLeds((Rgb){0, 0, 0}, (Rgb){0, 0, 0});
-    HAL_Delay(1000);
+    HAL_TIM_PWM_Start(config.motorLeft.timer, config.motorLeft.timerChannel);
+    HAL_TIM_PWM_Start(config.motorLeft.timer, config.motorRight.timerChannel);
     sensors_init(&hadc1);
     status_rawLeds((Rgb){0, 20, 0}, (Rgb){0, 0, 0});
 
