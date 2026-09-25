@@ -4,7 +4,7 @@
 #include "stm32h5xx_hal_adc.h"
 
 static ADC_HandleTypeDef* hAdc;
-static uint8_t            adcConversionCompleted         = 0;
+static volatile uint8_t   adcConversionCompleted         = 0;
 static uint16_t           adcDataBuffer[SENSOR_ENUM_LEN] = {0};
 static uint16_t           adcDataCopy[SENSOR_ENUM_LEN]   = {0};
 

@@ -52,6 +52,7 @@ target_sources(${CMAKE_PROJECT_NAME} PRIVATE
     Core/Src/rc5.c
     Core/Src/motor.c
     Core/Src/startStopModule.c
+    Core/Src/ee.c
     lib/cQueue/src/cQueue.c
 )
 

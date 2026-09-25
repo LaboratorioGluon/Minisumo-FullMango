@@ -2,17 +2,26 @@
 #include <stdint.h>
 #include <stdio.h>
 #include <string.h>
+#include "ee.h"
 #include "stm32h5xx_hal_uart.h"
 
 uint8_t dohyoOff; /** Command to Stop */
 uint8_t dohyoOn;
 
+extern struct {
+    uint32_t dohyoId;
+} eepromData;
+
 void startstop_init()
 {
     // TODO: Load dohyoOff from NVM
+    ee_read();
+
+    dohyoOff = eepromData.dohyoId;
+    dohyoOn  = dohyoOff | 0x1;
 }
 
-char                      buf[100];
+char                      buf[200];
 extern UART_HandleTypeDef huart5;
 
 StartStopRet startstop_run(Rc5Packet* rc5)
@@ -40,9 +49,12 @@ StartStopRet startstop_run(Rc5Packet* rc5)
     else if (addr == ADDR_PROGRAMMING) {
         dohyoOff = rc5->command;
         dohyoOn  = dohyoOff | 0x1;
-        snprintf(buf, 100, "[STARTSTOP]:: Updated DOHYO to: %d AND %d!\r\n",
-                 dohyoOff, dohyoOn);
+        snprintf(buf, 100, "[STARTSTOP]:: Updated DOHYO to: %d AND %d!\r\n", dohyoOff, dohyoOn);
         HAL_UART_Transmit(&huart5, buf, strlen(buf), 200);
+        if (dohyoOff != eepromData.dohyoId) {
+            eepromData.dohyoId = dohyoOff;
+            ee_write();
+        }
         return STARTSTOP_PROGRAM_OK;
         // TODO: store dohyoOff command.
     }

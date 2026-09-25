@@ -2,6 +2,7 @@
 #include <stdint.h>
 #include <stdio.h>
 #include <string.h>
+#include "ee.h"
 #include "motor.h"
 #include "rc5.h"
 #include "sensors.h"
@@ -14,7 +15,7 @@
 #include "wsLed.h"
 
 #define MOTOR_MOVE_DUTY_PEACE 30
-#define MOTOR_MOVE_DUTY_WAR 80
+#define MOTOR_MOVE_DUTY_WAR 60
 
 // TODO: Move to NVS
 #define LINE_LEFT_LIMIT 800
@@ -28,7 +29,7 @@ extern UART_HandleTypeDef huart5;
 static StatusInfo         info;
 static ADC_HandleTypeDef* adc;
 static Rc5                rc5;
-static Motor              motorLeft, motorRight;
+Motor                     motorLeft, motorRight;
 static uint8_t            isFighting = 0;
 
 typedef enum {
@@ -43,12 +44,11 @@ struct {
     MotorDirection left;
     MotorDirection right;
     uint32_t*      duty;
-} RobotDirectionMotorMap[] = {
-    [ROBOT_MOVE_STOP]  = {MOTOR_DIRECTION_FWD, MOTOR_DIRECTION_FWD, 0U},
-    [ROBOT_MOVE_FWD]   = {MOTOR_DIRECTION_FWD, MOTOR_DIRECTION_FWD, &motorDuty},
-    [ROBOT_MOVE_RIGHT] = {MOTOR_DIRECTION_FWD, MOTOR_DIRECTION_BCK, &motorDuty},
-    [ROBOT_MOVE_LEFT]  = {MOTOR_DIRECTION_BCK, MOTOR_DIRECTION_FWD, &motorDuty},
-    [ROBOT_MOVE_BACK] = {MOTOR_DIRECTION_BCK, MOTOR_DIRECTION_BCK, &motorDuty}};
+} RobotDirectionMotorMap[] = {[ROBOT_MOVE_STOP]  = {MOTOR_DIRECTION_FWD, MOTOR_DIRECTION_FWD, 0U},
+                              [ROBOT_MOVE_FWD]   = {MOTOR_DIRECTION_FWD, MOTOR_DIRECTION_FWD, &motorDuty},
+                              [ROBOT_MOVE_RIGHT] = {MOTOR_DIRECTION_FWD, MOTOR_DIRECTION_BCK, &motorDuty},
+                              [ROBOT_MOVE_LEFT]  = {MOTOR_DIRECTION_BCK, MOTOR_DIRECTION_FWD, &motorDuty},
+                              [ROBOT_MOVE_BACK]  = {MOTOR_DIRECTION_BCK, MOTOR_DIRECTION_BCK, &motorDuty}};
 
 typedef enum {
     DETECTED_LINE_NONE = 0,
@@ -64,13 +64,7 @@ typedef enum {
     DETECTED_TARGET_RIGHT,
 } DetectedTarget;
 
-typedef enum {
-    MOVE_STOP = 0,
-    MOVE_FWD,
-    MOVE_BCK,
-    MOVE_LEFT,
-    MOVE_RIGHT
-} MoveDirection;
+typedef enum { MOVE_STOP = 0, MOVE_FWD, MOVE_BCK, MOVE_LEFT, MOVE_RIGHT } MoveDirection;
 
 typedef struct _PatternMove {
     uint32_t             duration;  // [ms]
@@ -130,16 +124,21 @@ struct FightInfo {
     uint32_t       lastDetectionMs;
 } fightInfo;
 
+struct {
+    uint32_t dohyoId;
+} eepromData;
+
 typedef void (*StateFunc)(void);
 
 DetectedLine   detectedLine   = DETECTED_LINE_NONE;
 DetectedTarget detectedTarget = DETECTED_TARGET_NONE;
 
+volatile uint16_t sharp[3];
+volatile uint16_t line[2];
+
 static void minisumo_move(RobotDirection dir)
 {
-    uint32_t duty = RobotDirectionMotorMap[dir].duty
-                        ? *RobotDirectionMotorMap[dir].duty
-                        : 0;
+    uint32_t duty = RobotDirectionMotorMap[dir].duty ? *RobotDirectionMotorMap[dir].duty : 0;
     snprintf(uartBuf, 150, "(%lu)MOVE FORCE:%d\r\n", HAL_GetTick(), dir);
     HAL_UART_Transmit(&huart5, uartBuf, strlen(uartBuf), 1000);
 
@@ -157,16 +156,6 @@ static void minisumo_moveTarget(RobotDirection dir)
     motor_setTarget(&motorRight, RobotDirectionMotorMap[dir].right, motorDuty);
 }
 
-static void minisumo_moveTargetRun(RobotDirection dir, uint32_t delay)
-{
-    minisumo_moveTarget(dir);
-    uint32_t delayEnd = HAL_GetTick() + delay;
-    while (HAL_GetTick() < delayEnd) {
-        motor_update(&motorLeft);
-        motor_update(&motorRight);
-    }
-}
-
 static void minisumo_patternLoop()
 {
     uint32_t currentMs = HAL_GetTick();
@@ -175,6 +164,8 @@ static void minisumo_patternLoop()
 
         currentPattern->startMs = currentMs;
         minisumo_moveTarget(currentPattern->direction);
+        snprintf(uartBuf, 150, "Pattern Finished\r\n");
+        HAL_UART_Transmit(&huart5, uartBuf, strlen(uartBuf), 1000);
     }
 }
 
@@ -209,6 +200,7 @@ static uint8_t minisumo_handleLineDetected(DetectedLine line)
 static uint8_t minisumo_handleTargetDetected(DetectedTarget target)
 {
     uint32_t currentMs = HAL_GetTick();
+    motorDuty          = MOTOR_MOVE_DUTY_PEACE;
 
     if (fightInfo.target != target) {
         switch (detectedTarget) {
@@ -216,18 +208,17 @@ static uint8_t minisumo_handleTargetDetected(DetectedTarget target)
                 // Check Timer?
                 break;
             case DETECTED_TARGET_CENTER:
+                motorDuty = MOTOR_MOVE_DUTY_WAR;
                 minisumo_moveTarget(ROBOT_MOVE_FWD);
                 //minisumo_move(ROBOT_MOVE_FWD);
                 fightInfo.lastDetectionMs = currentMs;
                 break;
             case DETECTED_TARGET_LEFT:
                 fightInfo.lastDetectionMs = currentMs;
-                //minisumo_moveTarget(ROBOT_MOVE_LEFT);
                 minisumo_move(ROBOT_MOVE_LEFT);
                 break;
             case DETECTED_TARGET_RIGHT:
                 fightInfo.lastDetectionMs = currentMs;
-                //minisumo_moveTarget(ROBOT_MOVE_RIGHT);
                 minisumo_move(ROBOT_MOVE_RIGHT);
                 break;
         }
@@ -238,6 +229,8 @@ static uint8_t minisumo_handleTargetDetected(DetectedTarget target)
 
 static DetectedTarget minisumo_targetDetected(uint16_t sharp[3])
 {
+    snprintf(uartBuf, 150, "$%d;%d;%d;\r\n", sharp[0], sharp[1], sharp[2]);
+    HAL_UART_Transmit(&huart5, uartBuf, strlen(uartBuf), 1000);
     if (sharp[1] > 1500) {
         return DETECTED_TARGET_CENTER;
     }
@@ -258,8 +251,7 @@ static DetectedLine minisumo_lineDetected(uint16_t line[2])
         ret = DETECTED_LINE_LEFT;
     }
     if (line[1] < LINE_RIGHT_LIMIT) {
-        ret = (ret == DETECTED_LINE_LEFT) ? DETECTED_LINE_BOTH
-                                          : DETECTED_LINE_RIGHT;
+        ret = (ret == DETECTED_LINE_LEFT) ? DETECTED_LINE_BOTH : DETECTED_LINE_RIGHT;
     }
 
     return ret;
@@ -283,6 +275,8 @@ static void state_set_stop(void)
 
 static void state_set_seek(void)
 {
+    snprintf(uartBuf, 150, "SEEK START\r\n");
+    HAL_UART_Transmit(&huart5, uartBuf, strlen(uartBuf), 1000);
     status_rawLeds((Rgb){20, 0, 0}, (Rgb){0, 0, 0});
     minisumo_patternStart(PATTERN_SEEK);
     currentStateFunc = state_seek;
@@ -358,9 +352,6 @@ static void state_seek(void)
         }
     }
 
-    uint16_t sharp[3];
-    uint16_t line[2];
-
     if (sensors_isDataReady() == 1) {
         sharp[0]       = sensors_get(SENSOR_SHARP_LEFT);
         sharp[1]       = sensors_get(SENSOR_SHARP_CENTER);
@@ -412,9 +403,6 @@ static void state_fight(void)
         }
     }
 
-    uint16_t sharp[3];
-    uint16_t line[2];
-
     if (sensors_isDataReady() == 1) {
         sharp[0]       = sensors_get(SENSOR_SHARP_LEFT);
         sharp[1]       = sensors_get(SENSOR_SHARP_CENTER);
@@ -427,13 +415,19 @@ static void state_fight(void)
 
     if (detectedLine == DETECTED_LINE_NONE) {
         minisumo_handleTargetDetected(detectedTarget);
+        /*snprintf(uartBuf, 150, "Fight detected: %d\r\n", detectedTarget);
+        HAL_UART_Transmit(&huart5, uartBuf, strlen(uartBuf), 1000);
+        */
     }
     else {
+        motorDuty = MOTOR_MOVE_DUTY_PEACE;
         minisumo_move(ROBOT_MOVE_BACK);
         HAL_Delay(100);
         fightInfo.target = DETECTED_TARGET_NONE;
         detectedLine     = DETECTED_LINE_NONE;
         minisumo_moveTarget(ROBOT_MOVE_STOP);
+        snprintf(uartBuf, 150, "FGIHT Reversing\r\n");
+        HAL_UART_Transmit(&huart5, uartBuf, strlen(uartBuf), 1000);
     }
 
     motor_update(&motorLeft);
@@ -441,6 +435,8 @@ static void state_fight(void)
 }
 static void state_set_fight(void)
 {
+    snprintf(uartBuf, 150, "FIGHT START\r\n");
+    HAL_UART_Transmit(&huart5, uartBuf, strlen(uartBuf), 1000);
     status_rawLeds((Rgb){20, 0, 0}, (Rgb){0, 0, 20});
     currentStateFunc = state_fight;
     currentStateFunc();
@@ -487,6 +483,14 @@ static void state_stop(void)
 
 void minisumo_setup(MinisumoConfig* config)
 {
+
+    ee_init(&eepromData, sizeof(eepromData));
+    //ee_format();
+    ee_read();
+
+    snprintf(uartBuf, 150, "Dohyo ID: 0x%02X\r\n", eepromData.dohyoId);
+    HAL_UART_Transmit(&huart5, uartBuf, strlen(uartBuf), 1000);
+
     startstop_init();
 
     rc5.init.pin  = GPIO_PIN_1;
@@ -523,149 +527,6 @@ void minisumo_setup(MinisumoConfig* config)
 void minisumo_loop_new()
 {
     currentStateFunc();
-}
-
-#define MOTOR_CURRENT_SAMPLES 1
-uint32_t start;
-
-void minisumo_loop()
-{
-
-    uint8_t           uartBuf2[150] = "";
-    volatile uint16_t sharp[3];
-
-    if (sensors_isDataReady() == 1) {
-        start = HAL_GetTick();
-
-        volatile uint16_t lines[2];
-        lines[0] = sensors_get(SENSOR_LINE_LEFT);
-        lines[1] = sensors_get(SENSOR_LINE_RIGHT);
-
-        sharp[0] = sensors_get(SENSOR_SHARP_LEFT);
-        sharp[1] = sensors_get(SENSOR_SHARP_CENTER);
-        sharp[2] = sensors_get(SENSOR_SHARP_RIGHT);
-
-        /*snprintf(uartBuf, 150, "$%d,%d,%d;\r\n", sharp[0], sharp[1], sharp[2]);
-HAL_UART_Transmit(&huart5, uartBuf, strlen(uartBuf), 1000);*/
-        snprintf((char*)uartBuf, 150, "$%d,%d;\r\n", lines[0], lines[1]);
-        HAL_UART_Transmit(&huart5, uartBuf, strlen((char*)uartBuf), 1000);
-    }
-
-    Rc5Packet pkt;
-    Rc5Ret    ret = rc5_getPkt(&rc5, &pkt);
-    if (ret == RC5_OK) {
-        if (startstop_run(&pkt) == STARTSTOP_STOP) {
-            isFighting = 0;
-        }
-    }
-
-    if (isFighting) {
-        // TODO: Check for stop;
-
-        /*
-if (sharp[1] > 1500)
-{
-  motor_setDuty(&motorLeft, MOTOR_DIRECTION_FWD, 70);
-  motor_setDuty(&motorRight, MOTOR_DIRECTION_FWD, 70);
-}
-else if (sharp[0] > 1500)
-{
-  motor_setDuty(&motorLeft, MOTOR_DIRECTION_BCK, 50);
-  motor_setDuty(&motorRight, MOTOR_DIRECTION_FWD, 50);
-}
-else if (sharp[2] > 1500)
-{
-  motor_setDuty(&motorLeft, MOTOR_DIRECTION_FWD, 50);
-  motor_setDuty(&motorRight, MOTOR_DIRECTION_BCK, 50);
-}
-else
-{
-  // motor_setDuty(&motorLeft, MOTOR_DIRECTION_FWD, 0);
-  // motor_setDuty(&motorRight, MOTOR_DIRECTION_FWD, 0);
-}
-  */
-    }
-    else {
-        // Not fighting
-        motor_setDuty(&motorLeft, MOTOR_DIRECTION_FWD, 0);
-        motor_setDuty(&motorRight, MOTOR_DIRECTION_FWD, 0);
-
-        Rc5Packet pkt;
-        rc5_getBlocking(&rc5, &pkt);
-        snprintf(uartBuf, 150, "RC5: 0x%02X 0x%02X\r\n", pkt.address,
-                 pkt.command);
-
-        StartStopRet starstop = startstop_run(&pkt);
-
-        switch (starstop) {
-            case STARTSTOP_OK:
-                status_rawLeds((Rgb){20, 0, 0}, (Rgb){20, 0, 0});
-                break;
-            case STARTSTOP_RUN:
-                isFighting = 1;
-                break;  // Start fighting
-            case STARTSTOP_STOP:
-                isFighting = 0;
-                break;
-            case STARTSTOP_DOHYOERR:
-                status_rawLeds((Rgb){0, 0, 0}, (Rgb){0, 20, 0});
-                break;
-            case STARTSTOP_ADDRERR:
-                status_rawLeds((Rgb){0, 20, 0}, (Rgb){0, 0, 0});
-                break;
-            default:
-                break;
-        }
-    }
-#if 0
-  Rc5Packet pkt;
-  rc5_getBlocking(&rc5, &pkt);
-  snprintf(uartBuf, 150, "RC5: 0x%02X 0x%02X\r\n", pkt.address , pkt.command);
-
-  StartStopRet starstop = startstop_run(&pkt);
-
-
-  HAL_UART_Transmit(&huart5, uartBuf, strlen(uartBuf), 1000);
-
-  if (pkt.command == 0x01)
-  {
-    status_rawLeds((Rgb){0,0,20}, (Rgb){20,0,0});
-  }
-  if (pkt.command == 0x02)
-  {
-    status_rawLeds((Rgb){0,20,0}, (Rgb){0,20,0});
-  }
-  if (pkt.command == 0x03)
-  {
-    for( uint8_t i = 0; i <10; i++){
-      status_rawLeds((Rgb){20,20,0}, (Rgb){0,20,0});
-      HAL_Delay(300);
-      status_rawLeds((Rgb){0,20,0}, (Rgb){20,20,0});
-      HAL_Delay(300);
-
-    }
-
-  }
-  // 0 | 0 0 1 0 1 | 0 1 0 1 1 X | 1
-  if (pkt.command == 0x16)
-  {
-    info.led1 = 1;
-  }
-  else if (pkt.command == 0x17)
-  {
-    info.led1 = 2;
-  }
-  else
-  {
-    info.led1 = 0;
-  }
-#endif
-
-    // status_update(&info);
-
-    // sensors_update();
-
-    /** logic **/
 }
 
 void HAL_GPIO_EXTI_Rising_Callback(uint16_t GPIO_Pin)

@@ -36,19 +36,16 @@ void motor_setDuty(Motor* dev, MotorDirection dir, uint32_t duty)
         // If RESET/SET is swapped between directions
         // Move the localDuty adjustment
         localDuty = localDutyFwd;
-        HAL_GPIO_WritePin(dev->init.directionPort, dev->init.directionPin,
-                          pinStateFwd);
+        HAL_GPIO_WritePin(dev->init.directionPort, dev->init.directionPin, pinStateFwd);
     }
     else {
         localDuty = localDutyBck;
-        HAL_GPIO_WritePin(dev->init.directionPort, dev->init.directionPin,
-                          pinStateBck);
+        HAL_GPIO_WritePin(dev->init.directionPort, dev->init.directionPin, pinStateBck);
     }
 
     if (localDuty <= MOTOR_DUTY_MAX_VALUE) {
         uint32_t calculatedPwmValue = dev->reloadValue / 100.0f * localDuty;
-        __HAL_TIM_SET_COMPARE(dev->init.timer, dev->init.timerChannel,
-                              calculatedPwmValue);
+        __HAL_TIM_SET_COMPARE(dev->init.timer, dev->init.timerChannel, calculatedPwmValue);
     }
 }
 
@@ -60,6 +57,8 @@ void motor_setTarget(Motor* dev, MotorDirection dir, uint32_t dutyTarget)
     }
     dev->targetDirection = dir;
     dev->lastMs          = HAL_GetTick();
+    dev->startMs         = HAL_GetTick();
+    dev->startSpeed      = dev->currentSpeed;
 
     return;
 }
@@ -70,19 +69,19 @@ static uint8_t            uartBuf[200];
 void motor_update(Motor* dev)
 {
     uint32_t currentMs = HAL_GetTick();
-    uint32_t msDiff    = currentMs - dev->lastMs;
-    uint32_t dutyDiff  = dev->targetSpeed - dev->currentSpeed;
-    if (dutyDiff > dev->maxRate * msDiff) {
-        dev->currentSpeed += dev->maxRate * msDiff;
+    uint32_t deltaTms  = currentMs - dev->startMs;
+    if (dev->currentSpeed == dev->targetSpeed) {
+        return;  // Do nothing, motor already at desired speed.
     }
-    else {
+    uint32_t rate     = (dev->currentSpeed > 25) ? 5 * dev->maxRate : dev->maxRate;
+    dev->currentSpeed = rate * deltaTms / 10 + dev->startSpeed;
+    if (dev->currentSpeed >= dev->targetSpeed) {
         dev->currentSpeed = dev->targetSpeed;
     }
     motor_setDuty(dev, dev->targetDirection, dev->currentSpeed);
-    snprintf((char*)uartBuf, 150, "$%lu,%lu;%lu;%lu;\r\n", currentMs,
-             dev->lastMs, dutyDiff, dev->currentSpeed);
+    /*snprintf((char*)uartBuf, 150, "$%lu,%lu;%lu;\r\n", currentMs, dev->lastMs, dev->currentSpeed);
 
-    HAL_UART_Transmit(&huart5, uartBuf, strlen((char*)uartBuf), 1000);
+    HAL_UART_Transmit(&huart5, uartBuf, strlen((char*)uartBuf), 1000);*/
     dev->lastMs = currentMs;
 
     return;

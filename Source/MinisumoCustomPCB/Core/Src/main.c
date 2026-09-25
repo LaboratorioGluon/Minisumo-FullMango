@@ -24,6 +24,7 @@
 #include <stdint.h>
 #include <stdio.h>
 #include <string.h>
+#include "ee.h"
 #include "minisumo.h"
 #include "motor.h"
 #include "sensors.h"
@@ -81,13 +82,13 @@ static void MX_UART5_Init(void);
 static void MX_TIM1_Init(void);
 static void MX_TIM12_Init(void);
 static void MX_TIM6_Init(void);
+static void MX_FLASH_Init(void);
 /* USER CODE BEGIN PFP */
 
 /* USER CODE END PFP */
 
 /* Private user code ---------------------------------------------------------*/
 /* USER CODE BEGIN 0 */
-
 /* USER CODE END 0 */
 
 /**
@@ -130,9 +131,10 @@ int main(void)
     MX_TIM1_Init();
     MX_TIM12_Init();
     MX_TIM6_Init();
+    MX_FLASH_Init();
     /* USER CODE BEGIN 2 */
 
-    HAL_UART_Transmit(&huart5, "Hola soy Minisumo!\n", 20, 1000);
+    HAL_UART_Transmit(&huart5, "Hola soy Minisumo!\r\n", 20, 1000);
 
     MinisumoConfig config;
 
@@ -219,9 +221,8 @@ void SystemClock_Config(void)
 
     /** Initializes the CPU, AHB and APB buses clocks
   */
-    RCC_ClkInitStruct.ClockType = RCC_CLOCKTYPE_HCLK | RCC_CLOCKTYPE_SYSCLK |
-                                  RCC_CLOCKTYPE_PCLK1 | RCC_CLOCKTYPE_PCLK2 |
-                                  RCC_CLOCKTYPE_PCLK3;
+    RCC_ClkInitStruct.ClockType =
+        RCC_CLOCKTYPE_HCLK | RCC_CLOCKTYPE_SYSCLK | RCC_CLOCKTYPE_PCLK1 | RCC_CLOCKTYPE_PCLK2 | RCC_CLOCKTYPE_PCLK3;
     RCC_ClkInitStruct.SYSCLKSource   = RCC_SYSCLKSOURCE_PLLCLK;
     RCC_ClkInitStruct.AHBCLKDivider  = RCC_SYSCLK_DIV1;
     RCC_ClkInitStruct.APB1CLKDivider = RCC_HCLK_DIV1;
@@ -352,6 +353,53 @@ static void MX_ADC1_Init(void)
 }
 
 /**
+  * @brief FLASH Initialization Function
+  * @param None
+  * @retval None
+  */
+static void MX_FLASH_Init(void)
+{
+
+    /* USER CODE BEGIN FLASH_Init 0 */
+
+    /* USER CODE END FLASH_Init 0 */
+
+    FLASH_OBProgramInitTypeDef pOBInit = {0};
+
+    /* USER CODE BEGIN FLASH_Init 1 */
+
+    /* USER CODE END FLASH_Init 1 */
+    if (HAL_FLASH_Unlock() != HAL_OK) {
+        Error_Handler();
+    }
+
+    /* Option Bytes settings */
+
+    if (HAL_FLASH_OB_Unlock() != HAL_OK) {
+        Error_Handler();
+    }
+    pOBInit.OptionType = OPTIONBYTE_EDATA;
+    pOBInit.Banks      = FLASH_BANK_2;
+    pOBInit.EDATASize  = 7;
+    if (HAL_FLASHEx_OBProgram(&pOBInit) != HAL_OK) {
+        Error_Handler();
+    }
+    if (HAL_FLASH_OB_Lock() != HAL_OK) {
+        Error_Handler();
+    }
+    if (HAL_FLASH_Lock() != HAL_OK) {
+        Error_Handler();
+    }
+
+    /* Launch Option Bytes Loading */
+    /*HAL_FLASH_OB_Launch(); */
+
+    /* USER CODE BEGIN FLASH_Init 2 */
+
+    /* USER CODE END FLASH_Init 2 */
+}
+
+/**
   * @brief GPDMA1 Initialization Function
   * @param None
   * @retval None
@@ -441,8 +489,7 @@ static void MX_TIM1_Init(void)
     sMasterConfig.MasterOutputTrigger  = TIM_TRGO_RESET;
     sMasterConfig.MasterOutputTrigger2 = TIM_TRGO2_RESET;
     sMasterConfig.MasterSlaveMode      = TIM_MASTERSLAVEMODE_DISABLE;
-    if (HAL_TIMEx_MasterConfigSynchronization(&htim1, &sMasterConfig) !=
-        HAL_OK) {
+    if (HAL_TIMEx_MasterConfigSynchronization(&htim1, &sMasterConfig) != HAL_OK) {
         Error_Handler();
     }
     sConfigOC.OCMode       = TIM_OCMODE_PWM1;
@@ -452,12 +499,10 @@ static void MX_TIM1_Init(void)
     sConfigOC.OCFastMode   = TIM_OCFAST_ENABLE;
     sConfigOC.OCIdleState  = TIM_OCIDLESTATE_RESET;
     sConfigOC.OCNIdleState = TIM_OCNIDLESTATE_RESET;
-    if (HAL_TIM_PWM_ConfigChannel(&htim1, &sConfigOC, TIM_CHANNEL_2) !=
-        HAL_OK) {
+    if (HAL_TIM_PWM_ConfigChannel(&htim1, &sConfigOC, TIM_CHANNEL_2) != HAL_OK) {
         Error_Handler();
     }
-    if (HAL_TIM_PWM_ConfigChannel(&htim1, &sConfigOC, TIM_CHANNEL_3) !=
-        HAL_OK) {
+    if (HAL_TIM_PWM_ConfigChannel(&htim1, &sConfigOC, TIM_CHANNEL_3) != HAL_OK) {
         Error_Handler();
     }
     sBreakDeadTimeConfig.OffStateRunMode  = TIM_OSSR_DISABLE;
@@ -473,8 +518,7 @@ static void MX_TIM1_Init(void)
     sBreakDeadTimeConfig.Break2Filter     = 0;
     sBreakDeadTimeConfig.Break2AFMode     = TIM_BREAK_AFMODE_INPUT;
     sBreakDeadTimeConfig.AutomaticOutput  = TIM_AUTOMATICOUTPUT_DISABLE;
-    if (HAL_TIMEx_ConfigBreakDeadTime(&htim1, &sBreakDeadTimeConfig) !=
-        HAL_OK) {
+    if (HAL_TIMEx_ConfigBreakDeadTime(&htim1, &sBreakDeadTimeConfig) != HAL_OK) {
         Error_Handler();
     }
     /* USER CODE BEGIN TIM1_Init 2 */
@@ -512,16 +556,14 @@ static void MX_TIM4_Init(void)
     }
     sMasterConfig.MasterOutputTrigger = TIM_TRGO_RESET;
     sMasterConfig.MasterSlaveMode     = TIM_MASTERSLAVEMODE_DISABLE;
-    if (HAL_TIMEx_MasterConfigSynchronization(&htim4, &sMasterConfig) !=
-        HAL_OK) {
+    if (HAL_TIMEx_MasterConfigSynchronization(&htim4, &sMasterConfig) != HAL_OK) {
         Error_Handler();
     }
     sConfigOC.OCMode     = TIM_OCMODE_PWM1;
     sConfigOC.Pulse      = 80;
     sConfigOC.OCPolarity = TIM_OCPOLARITY_HIGH;
     sConfigOC.OCFastMode = TIM_OCFAST_ENABLE;
-    if (HAL_TIM_PWM_ConfigChannel(&htim4, &sConfigOC, TIM_CHANNEL_3) !=
-        HAL_OK) {
+    if (HAL_TIM_PWM_ConfigChannel(&htim4, &sConfigOC, TIM_CHANNEL_3) != HAL_OK) {
         Error_Handler();
     }
     /* USER CODE BEGIN TIM4_Init 2 */
@@ -557,8 +599,7 @@ static void MX_TIM6_Init(void)
     }
     sMasterConfig.MasterOutputTrigger = TIM_TRGO_RESET;
     sMasterConfig.MasterSlaveMode     = TIM_MASTERSLAVEMODE_DISABLE;
-    if (HAL_TIMEx_MasterConfigSynchronization(&htim6, &sMasterConfig) !=
-        HAL_OK) {
+    if (HAL_TIMEx_MasterConfigSynchronization(&htim6, &sMasterConfig) != HAL_OK) {
         Error_Handler();
     }
     /* USER CODE BEGIN TIM6_Init 2 */
@@ -604,8 +645,7 @@ static void MX_TIM12_Init(void)
     sConfigOC.Pulse      = 26406;
     sConfigOC.OCPolarity = TIM_OCPOLARITY_HIGH;
     sConfigOC.OCFastMode = TIM_OCFAST_DISABLE;
-    if (HAL_TIM_OC_ConfigChannel(&htim12, &sConfigOC, TIM_CHANNEL_1) !=
-        HAL_OK) {
+    if (HAL_TIM_OC_ConfigChannel(&htim12, &sConfigOC, TIM_CHANNEL_1) != HAL_OK) {
         Error_Handler();
     }
     /* USER CODE BEGIN TIM12_Init 2 */
@@ -642,12 +682,10 @@ static void MX_UART5_Init(void)
     if (HAL_UART_Init(&huart5) != HAL_OK) {
         Error_Handler();
     }
-    if (HAL_UARTEx_SetTxFifoThreshold(&huart5, UART_TXFIFO_THRESHOLD_1_8) !=
-        HAL_OK) {
+    if (HAL_UARTEx_SetTxFifoThreshold(&huart5, UART_TXFIFO_THRESHOLD_1_8) != HAL_OK) {
         Error_Handler();
     }
-    if (HAL_UARTEx_SetRxFifoThreshold(&huart5, UART_RXFIFO_THRESHOLD_1_8) !=
-        HAL_OK) {
+    if (HAL_UARTEx_SetRxFifoThreshold(&huart5, UART_RXFIFO_THRESHOLD_1_8) != HAL_OK) {
         Error_Handler();
     }
     if (HAL_UARTEx_DisableFifoMode(&huart5) != HAL_OK) {
@@ -736,10 +774,25 @@ void MPU_Config(void)
 
     HAL_MPU_ConfigRegion(&MPU_InitStruct);
 
+    /** Initializes and configures the Region 1 and the memory to be protected
+  */
+    MPU_InitStruct.Number           = MPU_REGION_NUMBER1;
+    MPU_InitStruct.BaseAddress      = 0x0900C000;
+    MPU_InitStruct.LimitAddress     = 0x09017FFF;
+    MPU_InitStruct.AccessPermission = MPU_REGION_ALL_RW;
+
+    HAL_MPU_ConfigRegion(&MPU_InitStruct);
+
     /** Initializes and configures the Attribute 0 and the memory to be protected
   */
     MPU_AttributesInit.Number     = MPU_ATTRIBUTES_NUMBER0;
     MPU_AttributesInit.Attributes = INNER_OUTER(MPU_NOT_CACHEABLE);
+
+    HAL_MPU_ConfigMemoryAttributes(&MPU_AttributesInit);
+
+    /** Initializes and configures the Attribute 1 and the memory to be protected
+  */
+    MPU_AttributesInit.Number = MPU_ATTRIBUTES_NUMBER1;
 
     HAL_MPU_ConfigMemoryAttributes(&MPU_AttributesInit);
     /* Enables the MPU */
