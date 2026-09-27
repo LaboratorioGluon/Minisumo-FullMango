@@ -73,8 +73,8 @@ void motor_update(Motor* dev)
     if (dev->currentSpeed == dev->targetSpeed) {
         return;  // Do nothing, motor already at desired speed.
     }
-    uint32_t rate     = (dev->currentSpeed > 25) ? 5 * dev->maxRate : dev->maxRate;
-    dev->currentSpeed = rate * deltaTms / 10 + dev->startSpeed;
+    uint32_t rate     = dev->maxRate;
+    dev->currentSpeed = rate * deltaTms / 100 + dev->startSpeed;
     if (dev->currentSpeed >= dev->targetSpeed) {
         dev->currentSpeed = dev->targetSpeed;
     }

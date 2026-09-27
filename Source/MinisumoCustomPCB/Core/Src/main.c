@@ -32,6 +32,8 @@
 #include "stm32h523xx.h"
 #include "stm32h5xx_hal.h"
 #include "stm32h5xx_hal_adc.h"
+#include "stm32h5xx_hal_adc_ex.h"
+#include "stm32h5xx_hal_def.h"
 #include "stm32h5xx_hal_gpio.h"
 #include "stm32h5xx_hal_tim.h"
 #include "stm32h5xx_hal_uart.h"
@@ -250,7 +252,8 @@ static void MX_ADC1_Init(void)
 
     /* USER CODE END ADC1_Init 0 */
 
-    ADC_ChannelConfTypeDef sConfig = {0};
+    ADC_ChannelConfTypeDef   sConfig         = {0};
+    ADC_InjectionConfTypeDef sConfigInjected = {0};
 
     /* USER CODE BEGIN ADC1_Init 1 */
 
@@ -277,6 +280,10 @@ static void MX_ADC1_Init(void)
     if (HAL_ADC_Init(&hadc1) != HAL_OK) {
         Error_Handler();
     }
+
+    /** Disable Injected Queue
+  */
+    HAL_ADCEx_DisableInjectedQueue(&hadc1);
 
     /** Configure Regular Channel
   */
@@ -345,6 +352,25 @@ static void MX_ADC1_Init(void)
     sConfig.Channel = ADC_CHANNEL_18;
     sConfig.Rank    = ADC_REGULAR_RANK_8;
     if (HAL_ADC_ConfigChannel(&hadc1, &sConfig) != HAL_OK) {
+        Error_Handler();
+    }
+
+    /** Configure Injected Channel
+  */
+    sConfigInjected.InjectedChannel               = ADC_CHANNEL_19;
+    sConfigInjected.InjectedRank                  = ADC_INJECTED_RANK_1;
+    sConfigInjected.InjectedSamplingTime          = ADC_SAMPLETIME_92CYCLES_5;
+    sConfigInjected.InjectedSingleDiff            = ADC_SINGLE_ENDED;
+    sConfigInjected.InjectedOffsetNumber          = ADC_OFFSET_NONE;
+    sConfigInjected.InjectedOffset                = 0;
+    sConfigInjected.InjectedNbrOfConversion       = 1;
+    sConfigInjected.InjectedDiscontinuousConvMode = DISABLE;
+    sConfigInjected.AutoInjectedConv              = DISABLE;
+    sConfigInjected.QueueInjectedContext          = DISABLE;
+    sConfigInjected.ExternalTrigInjecConv         = ADC_INJECTED_SOFTWARE_START;
+    sConfigInjected.ExternalTrigInjecConvEdge     = ADC_EXTERNALTRIGINJECCONV_EDGE_NONE;
+    sConfigInjected.InjecOversamplingMode         = DISABLE;
+    if (HAL_ADCEx_InjectedConfigChannel(&hadc1, &sConfigInjected) != HAL_OK) {
         Error_Handler();
     }
     /* USER CODE BEGIN ADC1_Init 2 */

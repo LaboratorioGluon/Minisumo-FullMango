@@ -20,6 +20,15 @@ void sensors_init(ADC_HandleTypeDef* adc)
     HAL_ADC_Start_DMA(hAdc, (uint32_t*)adcDataBuffer, SENSOR_ENUM_LEN);
 }
 
+uint32_t sensors_readSelector()
+{
+    HAL_ADCEx_InjectedStart(hAdc);
+
+    HAL_ADCEx_InjectedPollForConversion(hAdc, 1000);
+
+    return HAL_ADCEx_InjectedGetValue(hAdc, ADC_INJECTED_RANK_1);
+}
+
 uint8_t sensors_isDataReady()
 {
 

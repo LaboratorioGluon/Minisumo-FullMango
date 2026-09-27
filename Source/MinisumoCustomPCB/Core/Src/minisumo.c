@@ -15,7 +15,7 @@
 #include "wsLed.h"
 
 #define MOTOR_MOVE_DUTY_PEACE 30
-#define MOTOR_MOVE_DUTY_WAR 60
+#define MOTOR_MOVE_DUTY_WAR 80
 
 // TODO: Move to NVS
 #define LINE_LEFT_LIMIT 800
@@ -31,6 +31,13 @@ static ADC_HandleTypeDef* adc;
 static Rc5                rc5;
 Motor                     motorLeft, motorRight;
 static uint8_t            isFighting = 0;
+
+enum _StartMovement {
+    START_FORWARD = 0,
+    START_LEFT,
+    START_RIGHT,
+    START_BACK,
+} StartMovement;
 
 typedef enum {
     ROBOT_MOVE_STOP = 0,
@@ -81,7 +88,10 @@ typedef enum {
     PATTERN_LINE_LEFT_1,
     PATTERN_LINE_RIGHT,
     PATTERN_LINE_RIGHT_1,
+    PATTERN_START,
 } PatternName;
+
+PatternMove initialMove;
 
 PatternMove seekMoves[] = {
     // Seeking for enemy
@@ -111,6 +121,11 @@ PatternMove seekMoves[] = {
                               .startMs   = 0,
                               .next      = &seekMoves[PATTERN_LINE_RIGHT_1]},
     [PATTERN_LINE_RIGHT_1] = {.direction = ROBOT_MOVE_RIGHT,
+                              .duration  = 200,
+                              .speed     = MOTOR_MOVE_DUTY_PEACE,
+                              .startMs   = 0,
+                              .next      = &seekMoves[PATTERN_SEEK]},
+    [PATTERN_START]        = {.direction = ROBOT_MOVE_RIGHT,
                               .duration  = 200,
                               .speed     = MOTOR_MOVE_DUTY_PEACE,
                               .startMs   = 0,
@@ -179,7 +194,8 @@ static void minisumo_patternStart(PatternName p)
 
 static uint8_t minisumo_handleLineDetected(DetectedLine line)
 {
-    if ((detectedLine != DETECTED_LINE_NONE)) {
+    static DetectedLine prevLine = DETECTED_LINE_NONE;
+    if ((detectedLine != prevLine)) {
         switch (detectedLine) {
             case DETECTED_LINE_NONE:
                 break;
@@ -192,7 +208,7 @@ static uint8_t minisumo_handleLineDetected(DetectedLine line)
                 break;
         }
     }
-
+    prevLine = line;
     // True if line is detected, false otherwise.
     return (line != DETECTED_LINE_NONE);
 }
@@ -231,13 +247,13 @@ static DetectedTarget minisumo_targetDetected(uint16_t sharp[3])
 {
     snprintf(uartBuf, 150, "$%d;%d;%d;\r\n", sharp[0], sharp[1], sharp[2]);
     HAL_UART_Transmit(&huart5, uartBuf, strlen(uartBuf), 1000);
-    if (sharp[1] > 1500) {
+    if (sharp[1] > 1000) {
         return DETECTED_TARGET_CENTER;
     }
-    else if (sharp[0] > 1500) {
+    else if (sharp[0] > 1000) {
         return DETECTED_TARGET_LEFT;
     }
-    else if (sharp[2] > 1500) {
+    else if (sharp[2] > 1000) {
         return DETECTED_TARGET_RIGHT;
     }
     return DETECTED_TARGET_NONE;
@@ -278,7 +294,7 @@ static void state_set_seek(void)
     snprintf(uartBuf, 150, "SEEK START\r\n");
     HAL_UART_Transmit(&huart5, uartBuf, strlen(uartBuf), 1000);
     status_rawLeds((Rgb){20, 0, 0}, (Rgb){0, 0, 0});
-    minisumo_patternStart(PATTERN_SEEK);
+    minisumo_patternStart(PATTERN_START);
     currentStateFunc = state_seek;
 }
 
@@ -287,9 +303,10 @@ static void state_set_seek(void)
 */
 static void state_start(void)
 {
-    Rc5Packet    pkt;
-    Rc5Ret       ret       = rc5_getPkt(&rc5, &pkt);
-    StartStopRet startStop = STARTSTOP_OK;
+    static uint8_t firstRun = true;
+    Rc5Packet      pkt;
+    Rc5Ret         ret       = rc5_getPkt(&rc5, &pkt);
+    StartStopRet   startStop = STARTSTOP_OK;
 
     if (ret == RC5_OK) {
         switch (pkt.address) {
@@ -322,7 +339,36 @@ static void state_start(void)
     }
 
     // Cal sensor_isDataReady to cleanup ADC buffers.
-    sensors_isDataReady();
+    //sensors_isDataReady();
+    if (sensors_isDataReady() == 1) {
+        sharp[0]       = sensors_get(SENSOR_SHARP_LEFT);
+        sharp[1]       = sensors_get(SENSOR_SHARP_CENTER);
+        sharp[2]       = sensors_get(SENSOR_SHARP_RIGHT);
+        line[0]        = sensors_get(SENSOR_LINE_LEFT);
+        line[1]        = sensors_get(SENSOR_LINE_RIGHT);
+        detectedLine   = minisumo_lineDetected(line);
+        detectedTarget = minisumo_targetDetected(sharp);
+    }
+
+    uint32_t selectorValue            = sensors_readSelector();
+    seekMoves[PATTERN_START].duration = 500;
+    if (selectorValue < 1000) {
+        StartMovement                      = START_FORWARD;
+        seekMoves[PATTERN_START].direction = ROBOT_MOVE_FWD;
+    }
+    else if (selectorValue < 3200) {
+        StartMovement                      = START_LEFT;
+        seekMoves[PATTERN_START].direction = ROBOT_MOVE_LEFT;
+    }
+    else if (selectorValue < 2400) {
+        StartMovement                      = START_RIGHT;
+        seekMoves[PATTERN_START].duration  = 1000;
+        seekMoves[PATTERN_START].direction = ROBOT_MOVE_RIGHT;
+    }
+    else {
+        StartMovement                      = START_RIGHT;
+        seekMoves[PATTERN_START].direction = ROBOT_MOVE_RIGHT;
+    }
 
     HAL_Delay(10);
 }
@@ -362,10 +408,10 @@ static void state_seek(void)
         detectedTarget = minisumo_targetDetected(sharp);
     }
 
-    if (minisumo_handleTargetDetected(detectedTarget)) {
+    /*if (minisumo_handleTargetDetected(detectedTarget)) {
         state_set_fight();
         return;
-    }
+    }*/
     if (minisumo_handleLineDetected(detectedLine) == 0) {}
 
     minisumo_patternLoop();
@@ -506,13 +552,13 @@ void minisumo_setup(MinisumoConfig* config)
     motorLeft.currentSpeed    = 0;
     motorLeft.targetSpeed     = 0;
     motorLeft.targetDirection = MOTOR_DIRECTION_FWD;
-    motorLeft.maxRate         = 1;
+    motorLeft.maxRate         = 13;
     motor_init(&motorLeft);
     motorRight.init            = config->motorRight;
     motorRight.currentSpeed    = 0;
     motorRight.targetSpeed     = 0;
     motorRight.targetDirection = MOTOR_DIRECTION_FWD;
-    motorRight.maxRate         = 1;
+    motorRight.maxRate         = 13;
     motor_init(&motorRight);
 
     adc = config->adc;
