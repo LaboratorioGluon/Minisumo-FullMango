@@ -48,7 +48,7 @@
 
 #define EE_MANUAL_CONFIG 1
 #if (EE_MANUAL_CONFIG == 1)
-#define EE_SELECTED_PAGE_SECTOR_NUMBER 0
+#define EE_SELECTED_PAGE_SECTOR_NUMBER 31
 #define EE_SELECTED_PAGE_SECTOR_SIZE EE_PAGE_SECTOR_SIZE_6K
 #define EE_SELECTED_BANK FLASH_BANK_2                                // Second flash bank
 #define EE_SELECTED_ADDRESS 0x0900C000 + EE_PAGE_SECTOR_SIZE_6K * 7  // Address for Flash high-cycle data.

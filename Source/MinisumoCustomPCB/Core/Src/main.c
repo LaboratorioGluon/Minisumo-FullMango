@@ -815,12 +815,6 @@ void MPU_Config(void)
     MPU_AttributesInit.Attributes = INNER_OUTER(MPU_NOT_CACHEABLE);
 
     HAL_MPU_ConfigMemoryAttributes(&MPU_AttributesInit);
-
-    /** Initializes and configures the Attribute 1 and the memory to be protected
-  */
-    MPU_AttributesInit.Number = MPU_ATTRIBUTES_NUMBER1;
-
-    HAL_MPU_ConfigMemoryAttributes(&MPU_AttributesInit);
     /* Enables the MPU */
     HAL_MPU_Enable(MPU_PRIVILEGED_DEFAULT);
 }

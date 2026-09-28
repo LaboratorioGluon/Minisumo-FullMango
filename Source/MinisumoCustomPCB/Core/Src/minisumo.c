@@ -408,10 +408,10 @@ static void state_seek(void)
         detectedTarget = minisumo_targetDetected(sharp);
     }
 
-    /*if (minisumo_handleTargetDetected(detectedTarget)) {
+    if (minisumo_handleTargetDetected(detectedTarget)) {
         state_set_fight();
         return;
-    }*/
+    }
     if (minisumo_handleLineDetected(detectedLine) == 0) {}
 
     minisumo_patternLoop();
@@ -531,7 +531,6 @@ void minisumo_setup(MinisumoConfig* config)
 {
 
     ee_init(&eepromData, sizeof(eepromData));
-    //ee_format();
     ee_read();
 
     snprintf(uartBuf, 150, "Dohyo ID: 0x%02X\r\n", eepromData.dohyoId);

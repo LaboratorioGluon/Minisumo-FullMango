@@ -222,7 +222,7 @@ bool ee_format(void)
 #ifdef HAL_ICACHE_MODULE_ENABLED
 
         /* disabling ICACHE if enabled*/
-        //HAL_ICACHE_Disable();
+        HAL_ICACHE_Disable();
 #endif
 #if EE_ERASE == EE_ERASE_PAGE_ADDRESS
         flash_erase.TypeErase   = FLASH_TYPEERASE_PAGES;
@@ -258,7 +258,7 @@ bool ee_format(void)
 
     HAL_FLASH_Lock();
 #ifdef HAL_ICACHE_MODULE_ENABLED
-    //HAL_ICACHE_Enable();
+    HAL_ICACHE_Enable();
 #endif
     return answer;
 }
@@ -352,7 +352,7 @@ bool ee_write(void)
 #elif (defined FLASH_TYPEPROGRAM_QUADWORD)
 
         /* writing buffer to flash */
-        for (uint32_t i = 0; i < ee_handle.size; i += 16) {
+        for (uint32_t i = 0; i < ee_handle.size; i += 4) {
             if (HAL_FLASH_Program(FLASH_TYPEPROGRAM_WORD_EDATA, ee_handle.address + i, (uint32_t)data) != HAL_OK) {
                 answer = false;
                 break;
