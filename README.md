@@ -6,6 +6,10 @@ Hecho 100% en directos de Twitch y Youtube, desde las pruebas de concepto, la el
 -   Twitch: [www.twitch.tv/labgluon](https://www.twitch.tv/labgluon)
 -   Youtube: [www.youtube.com/labgoratoriogluon](www.youtube.com/labgoratoriogluon)
 
+<p align="center">
+<img src="./Doc/imagen_3d.png" width="400" alt="Imagen 3D">
+</p>
+
 # :wrench: Componentes Principales :wrench:
 - **PCB** : Diseño propio hecho en KiCAD, proyecto en carpeta `Schematics/MinisumoV2/`
 - **Estructura:** Para añadir peso y consistencia esta basado en placas perforadas de acero cincado.
@@ -33,3 +37,9 @@ El robot minisumo FullMango se basa en un control por máquina de estados. Siend
 ## Control de motores
 
 Para el control de motores se ha implementado una doble rampa de cara a intentar resolver el problema de los caballitos: los motores son muy potentes y si pasamos al 80% de golpe, el **robot se da la vuelta**.
+
+
+# Otros enlaces
+
+- [Pagina Web (Castellano)](https://www.laboratoriogluon.com/)
+- [Webpage (English)](https://en.laboratoriogluon.com/)
