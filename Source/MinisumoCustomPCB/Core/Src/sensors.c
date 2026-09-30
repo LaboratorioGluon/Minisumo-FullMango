@@ -3,6 +3,8 @@
 #include <string.h>
 #include "stm32h5xx_hal_adc.h"
 
+#define BATTADC_TO_MV 4.6f
+
 static ADC_HandleTypeDef* hAdc;
 static volatile uint8_t   adcConversionCompleted         = 0;
 static uint16_t           adcDataBuffer[SENSOR_ENUM_LEN] = {0};
@@ -45,4 +47,9 @@ uint8_t sensors_isDataReady()
 inline uint16_t sensors_get(SensorResult sensor)
 {
     return adcDataCopy[sensor];
+}
+
+uint16_t sensors_getBattMv()
+{
+    return adcDataCopy[SENSOR_BATT] * BATTADC_TO_MV;
 }

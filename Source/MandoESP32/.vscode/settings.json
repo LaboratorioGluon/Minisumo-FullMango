@@ -1,0 +1,15 @@
+{
+    "idf.currentSetup": "/home/labgluon/.espressif/v6.1/esp-idf",
+    "idf.openOcdConfigs": [
+        "board/esp32c3-builtin.cfg"
+    ],
+    "idf.customExtraVars": {
+        "IDF_TARGET": "esp32c3"
+    },
+    "clangd.path": "/home/labgluon/.espressif/tools/esp-clangd/esp-21.1.3_20260408/esp-clangd/bin/clangd",
+    "clangd.arguments": [
+      "--background-index",
+      "--query-driver=**",
+      "--compile-commands-dir=/media/labgluon/laboratoriogluon/LaboratorioGluon/Proyectos/039.MinisumoV2/repo/Source/MandoEsp32/build"
+    ]
+}

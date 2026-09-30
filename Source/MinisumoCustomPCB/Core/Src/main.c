@@ -107,6 +107,7 @@ int main(void)
     /* MCU Configuration--------------------------------------------------------*/
 
     /* MPU Configuration--------------------------------------------------------*/
+
     MPU_Config();
 
     /* Reset of all peripherals, Initializes the Flash interface and the Systick. */

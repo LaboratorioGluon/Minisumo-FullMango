@@ -3,6 +3,7 @@
 #include <ssd1306.h>
 #include <esp_log.h>
 #include "menu.h"
+#include <string.h>
 // #include "common.h"
 
 constexpr uint8_t ADDR_STARTSTOP = 0x07;
@@ -58,18 +59,84 @@ void update_screen()
     }
 }
 
-extern "C" void app_main()
+static void i2c_scanner_task()
+{
+    esp_log_level_set("i2c.master", ESP_LOG_NONE);
+    // Configure and initialize the I2C master bus
+    i2c_master_bus_config_t bus_cfg = {
+        .i2c_port = I2C_NUM_0,
+        .sda_io_num = OLED_SDA,
+        .scl_io_num = OLED_SCL,
+        .clk_source = I2C_CLK_SRC_DEFAULT,
+        .glitch_ignore_cnt = 7,
+        .intr_priority = 0,
+        .trans_queue_depth = 0,
+        .flags = {.enable_internal_pullup = true, .allow_pd = false}
+    };
+
+    i2c_master_bus_handle_t bus_handle;
+    ESP_ERROR_CHECK(i2c_new_master_bus(&bus_cfg, &bus_handle));
+
+    while (1) {
+        ESP_LOGI("SCANNER", "Starting I2C scan...");
+
+        uint8_t found_addresses[128] = {0};  // To store found devices
+        int devices_found = 0;
+
+        // Optional: Print classic grid header
+        printf("     0  1  2  3  4  5  6  7  8  9  a  b  c  d  e  f\n");
+
+        for (int addr = 0x00; addr <= 0x7F; addr++) {
+            if (addr % 16 == 0) {
+                printf("%02x: ", addr);
+            }
+            // Skip general call (0x00) and reserved addresses
+            esp_err_t ret = i2c_master_probe(bus_handle, addr, 100);
+
+            if (ret == ESP_OK) {
+                printf("%02x ", addr);
+                if (addr >= 0x08 && addr <= 0x77) {  // Find only count valid 7-bit addresses
+                    found_addresses[devices_found++] = addr;
+                }
+            } else if (ret == ESP_ERR_NOT_FOUND) {
+                printf("-- ");
+            } else {
+                printf("%d", ret);
+                printf("UU ");  // Timeout or other error
+            }
+
+            if ((addr + 1) % 16 == 0) {
+                printf("\n");
+            }
+        }
+        // Print summary
+        printf("\nScan complete: %d device(s) found.\n", devices_found);
+        for (int i = 0; i < devices_found; i++) {
+            printf("%d. Device 0x%02x address\n", i + 1, found_addresses[i]);
+        }
+        if (devices_found == 0) {
+            printf("\n");  // Extra newline for readability when none found
+        }
+        // Repeats scan every 10 seconds (optional)
+        vTaskDelay(pdMS_TO_TICKS(10000));
+    }
+}
+
+extern "C" void app_main(void)
 {
     vTaskDelay(pdMS_TO_TICKS(2000));
+
+    //i2c_scanner_task();
+    
     rc5_init(GPIO_NUM_4, GPIO_NUM_NC);
 
-    gpio_config_t buttons[6] = {0};
-    buttons[0].pin_bit_mask = (1 << BUTTON_LEFT);
-    buttons[1].pin_bit_mask = (1 << BUTTON_CENTER);
-    buttons[2].pin_bit_mask = (1 << BUTTON_RIGHT);
-    buttons[3].pin_bit_mask = (1 << SLIDER_UP);
-    buttons[4].pin_bit_mask = (1 << SLIDER_DOWN);
-    buttons[5].pin_bit_mask = (1 << SLIDER_PRESS);
+    gpio_config_t buttons[6] = {};
+    buttons[0].pin_bit_mask = (1ULL << BUTTON_LEFT);
+    buttons[1].pin_bit_mask = (1ULL << BUTTON_CENTER);
+    buttons[2].pin_bit_mask = (1ULL << BUTTON_RIGHT);
+    buttons[3].pin_bit_mask = (1ULL << SLIDER_UP);
+    buttons[4].pin_bit_mask = (1ULL << SLIDER_DOWN);
+    buttons[5].pin_bit_mask = (1ULL << SLIDER_PRESS);
 
     dev_cfg.flip_enabled = true;
 
@@ -79,7 +146,9 @@ extern "C" void app_main()
         .scl_io_num = OLED_SCL,
         .clk_source = I2C_CLK_SRC_DEFAULT,
         .glitch_ignore_cnt = 7,
-        .flags = {.enable_internal_pullup = true},
+        .intr_priority = 0,
+        .trans_queue_depth = 0,
+        .flags = {.enable_internal_pullup = true,.allow_pd = false},
     };
     ESP_ERROR_CHECK(i2c_new_master_bus(&bus_config, &busHandle));
 

@@ -5,6 +5,13 @@
 
 constexpr uint8_t ADDR_STARTSTOP = 0x07;
 constexpr uint8_t ADDR_PROGRAMMING = 0x0B;
+constexpr uint8_t ADDR_CUSTOM_CMD = 0x13;
+
+constexpr uint8_t CUSTOM_CMD_WHITE_LINE_CAL = 0x11;
+constexpr uint8_t CUSTOM_CMD_BLACK_LINE_CAL = 0x12;
+constexpr uint8_t CUSTOM_CMD_RESTORE_LINE   = 0x13;
+constexpr uint8_t CUSTOM_CMD_TEST_LINE   = 0x14;
+constexpr uint8_t CUSTOM_CMD_SAVE_LINE_CAL   = 0x15;
 
 /***** MENU ******/
 
@@ -50,31 +57,41 @@ static Menu g_CalibSharp =
 static Menu g_calibration = {
     .entries = {
         {
-            .text = "Calibrate Line",
-            .action = nullptr,
+            .text = "Black",
+            .action = [](){rc5_send(ADDR_CUSTOM_CMD, CUSTOM_CMD_BLACK_LINE_CAL);},
             .nextMenu = &g_CalibLines,
         },
         {
-            .text = "Calibrate Sharp",
-            .action = nullptr,
+            .text = "White",
+            .action = [](){rc5_send(ADDR_CUSTOM_CMD, CUSTOM_CMD_WHITE_LINE_CAL);},
             .nextMenu = &g_CalibSharp,
         },
         {
-            .text = "subMenu3",
-            .action = nullptr,
-            .nextMenu = nullptr,
+            .text = "Test",
+            .action = [](){rc5_send(ADDR_CUSTOM_CMD, CUSTOM_CMD_TEST_LINE);},
+            .nextMenu = &g_CalibSharp,
         },
+        {
+            .text = "Restore",
+            .action = [](){rc5_send(ADDR_CUSTOM_CMD, CUSTOM_CMD_RESTORE_LINE);},
+            .nextMenu = &g_CalibSharp,
+        },
+        {
+            .text = "Store",
+            .action = [](){rc5_send(ADDR_CUSTOM_CMD, CUSTOM_CMD_SAVE_LINE_CAL);},
+            .nextMenu = &g_CalibSharp,
+        }
     },
-    .numEntries = 3,
+    .numEntries = 5,
     .prevMenu = nullptr,
 };
 
 static Menu g_menu = {
     .entries = {
         {
-            .text = "Set Normal Mode",
+            .text = "Calib Line",
             .action = nullptr,
-            .nextMenu = nullptr,
+            .nextMenu = &g_calibration,
         },
         {
             .text = "Calibration",

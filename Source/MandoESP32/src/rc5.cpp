@@ -57,15 +57,17 @@ void rc5_init(gpio_num_t gpioTx, gpio_num_t gpioRx, float duty)
             .mem_block_symbols = 64,          // memory block size, 64 * 4 = 256 Bytes
             .trans_queue_depth = 4,           // set the number of transactions that can
                                               // pend in the background
-            .flags = {.invert_out = false, .with_dma = false},
+            .intr_priority = 0,
+            .flags = {.invert_out = false,   .with_dma = false, .allow_pd = false, .init_level=0},
         };
+      
 
         ESP_ERROR_CHECK(rmt_new_tx_channel(&tx_chan_config, &tx_chan));
 
         rmt_carrier_config_t tx_carrier_cfg = {
             .frequency_hz = 38000,                   // 38 KHz
             .duty_cycle = duty,                      // duty cycle 33%
-            .flags = {.polarity_active_low = false}, // carrier should be modulated to high level
+            .flags = {.polarity_active_low = false,.always_on = false}, // carrier should be modulated to high level
         };
         // modulate carrier to TX channel
         ESP_ERROR_CHECK(rmt_apply_carrier(tx_chan, &tx_carrier_cfg));
@@ -82,7 +84,7 @@ void rc5_init(gpio_num_t gpioTx, gpio_num_t gpioRx, float duty)
             .resolution_hz = 1 * 1000 * 1000, // 1 MHz tick resolution, i.e., 1 tick = 1 µs
             .mem_block_symbols = 64,          // memory block size, 64 * 4 = 256 Bytes
             .intr_priority = 0,
-            .flags = {.invert_in = false, .with_dma = false, .io_loop_back = false},
+            .flags = {.invert_in = 0, .with_dma = false,  .allow_pd = false},
         };
 
         ESP_ERROR_CHECK(rmt_new_rx_channel(&rx_chan_config, &rx_chan));

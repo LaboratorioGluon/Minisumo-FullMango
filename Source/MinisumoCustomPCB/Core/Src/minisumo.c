@@ -15,11 +15,11 @@
 #include "wsLed.h"
 
 #define MOTOR_MOVE_DUTY_PEACE 30
-#define MOTOR_MOVE_DUTY_WAR 80
+#define MOTOR_MOVE_DUTY_WAR 100
 
 // TODO: Move to NVS
-#define LINE_LEFT_LIMIT 800
-#define LINE_RIGHT_LIMIT 800
+#define LINE_LEFT_LIMIT 700
+#define LINE_RIGHT_LIMIT 700
 
 uint32_t motorDuty = MOTOR_MOVE_DUTY_PEACE;
 
@@ -30,7 +30,11 @@ static StatusInfo         info;
 static ADC_HandleTypeDef* adc;
 static Rc5                rc5;
 Motor                     motorLeft, motorRight;
-static uint8_t            isFighting = 0;
+
+uint16_t blackValue[2]       = {0, 0};
+uint16_t whiteValue[2]       = {0, 0};
+uint16_t lineLimitDefault[2] = {700, 700};
+uint16_t lineLimitCurrent[2] = {700, 700};
 
 enum _StartMovement {
     START_FORWARD = 0,
@@ -38,6 +42,8 @@ enum _StartMovement {
     START_RIGHT,
     START_BACK,
 } StartMovement;
+
+typedef enum { LEFT = 0, RIGHT } LineSensorSide;
 
 typedef enum {
     ROBOT_MOVE_STOP = 0,
@@ -126,7 +132,7 @@ PatternMove seekMoves[] = {
                               .startMs   = 0,
                               .next      = &seekMoves[PATTERN_SEEK]},
     [PATTERN_START]        = {.direction = ROBOT_MOVE_RIGHT,
-                              .duration  = 200,
+                              .duration  = 500,
                               .speed     = MOTOR_MOVE_DUTY_PEACE,
                               .startMs   = 0,
                               .next      = &seekMoves[PATTERN_SEEK]},
@@ -141,6 +147,8 @@ struct FightInfo {
 
 struct {
     uint32_t dohyoId;
+    uint16_t limitL;
+    uint16_t limitR;
 } eepromData;
 
 typedef void (*StateFunc)(void);
@@ -151,16 +159,104 @@ DetectedTarget detectedTarget = DETECTED_TARGET_NONE;
 volatile uint16_t sharp[3];
 volatile uint16_t line[2];
 
+static void correctCmd()
+{
+    status_setLed(LED_A, (Rgb){20, 20, 0});
+    HAL_Delay(200);
+    status_setLed(LED_A, (Rgb){0, 0, 0});
+    HAL_Delay(200);
+    status_setLed(LED_A, (Rgb){20, 20, 0});
+    HAL_Delay(200);
+    status_setLed(LED_A, (Rgb){0, 0, 0});
+    HAL_Delay(200);
+    status_setLed(LED_A, (Rgb){20, 20, 0});
+    HAL_Delay(200);
+    status_setLed(LED_A, (Rgb){0, 0, 0});
+    HAL_Delay(200);
+}
+
+static void setLineLimits()
+{
+    lineLimitCurrent[0] = (blackValue[0] + whiteValue[0]) / 2 * 0.85;
+    lineLimitCurrent[1] = (blackValue[1] + whiteValue[1]) / 2 * 0.85;
+    snprintf(uartBuf, 150, "Limit Set to: %d %d\r\n", lineLimitCurrent[0], lineLimitCurrent[1]);
+    HAL_UART_Transmit(&huart5, uartBuf, strlen(uartBuf), 1000);
+}
+
+static void minisumo_configPkt(Rc5Packet* pkt)
+{
+
+    if (pkt->command == RC5_CUSTOM_CMD_BLACK_LINE_CAL) {
+        uint16_t minBlack[2] = {9999, 9999};
+        uint16_t value;
+        for (uint32_t i = 0; i < 100; i++) {
+            if (sensors_isDataReady() == 1) {
+                value = sensors_get(SENSOR_LINE_LEFT);
+                if (value < minBlack[0]) {
+                    minBlack[0] = value;
+                }
+                value = sensors_get(SENSOR_LINE_RIGHT);
+                if (value < minBlack[1]) {
+                    minBlack[1] = value;
+                }
+            }
+            HAL_Delay(5);
+        }
+        blackValue[LEFT]  = minBlack[LEFT];
+        blackValue[RIGHT] = minBlack[RIGHT];
+        snprintf(uartBuf, 150, "Black calibrated: %d %d\r\n", minBlack[0], minBlack[1]);
+        HAL_UART_Transmit(&huart5, uartBuf, strlen(uartBuf), 1000);
+        setLineLimits();
+        correctCmd();
+    }
+    else if (pkt->command == RC5_CUSTOM_CMD_WHITE_LINE_CAL) {
+        uint16_t maxWhite[2] = {0, 0};
+        uint16_t value;
+        for (uint32_t i = 0; i < 100; i++) {
+            if (sensors_isDataReady() == 1) {
+                value = sensors_get(SENSOR_LINE_LEFT);
+                if (value > maxWhite[0]) {
+                    maxWhite[0] = value;
+                }
+                value = sensors_get(SENSOR_LINE_RIGHT);
+                if (value > maxWhite[1]) {
+                    maxWhite[1] = value;
+                }
+            }
+            HAL_Delay(5);
+        }
+        whiteValue[LEFT]  = maxWhite[LEFT];
+        whiteValue[RIGHT] = maxWhite[RIGHT];
+        snprintf(uartBuf, 150, "White calibrated: %d %d\r\n", maxWhite[0], maxWhite[1]);
+        HAL_UART_Transmit(&huart5, uartBuf, strlen(uartBuf), 1000);
+        setLineLimits();
+        correctCmd();
+    }
+    else if (pkt->command == RC5_CUSTOM_CMD_RESTORE_LINE) {
+        lineLimitCurrent[LEFT]  = 700;
+        lineLimitCurrent[RIGHT] = 700;
+        correctCmd();
+    }
+    else if (pkt->command == RC5_CUSTOM_CMD_SAVE_LINE_CAL) {
+        eepromData.limitL = lineLimitCurrent[LEFT];
+        eepromData.limitR = lineLimitCurrent[RIGHT];
+        ee_write();
+        correctCmd();
+    }
+    else if (pkt->command == RC5_CUSTOM_CMD_RESTORE_LINE) {
+        lineLimitCurrent[LEFT]  = lineLimitDefault[LEFT];
+        lineLimitCurrent[RIGHT] = lineLimitDefault[RIGHT];
+    }
+}
+
 static void minisumo_move(RobotDirection dir)
 {
     uint32_t duty = RobotDirectionMotorMap[dir].duty ? *RobotDirectionMotorMap[dir].duty : 0;
     snprintf(uartBuf, 150, "(%lu)MOVE FORCE:%d\r\n", HAL_GetTick(), dir);
     HAL_UART_Transmit(&huart5, uartBuf, strlen(uartBuf), 1000);
 
-    motor_setTarget(&motorLeft, RobotDirectionMotorMap[dir].left, duty);
-    motor_setTarget(&motorRight, RobotDirectionMotorMap[dir].right, duty);
-    motor_setDuty(&motorLeft, RobotDirectionMotorMap[dir].left, duty);
-    motor_setDuty(&motorRight, RobotDirectionMotorMap[dir].right, duty);
+    motor_setForced(&motorLeft, RobotDirectionMotorMap[dir].left, duty);
+    motor_setForced(&motorRight, RobotDirectionMotorMap[dir].right, duty);
 }
 
 static void minisumo_moveTarget(RobotDirection dir)
@@ -215,13 +311,20 @@ static uint8_t minisumo_handleLineDetected(DetectedLine line)
 
 static uint8_t minisumo_handleTargetDetected(DetectedTarget target)
 {
-    uint32_t currentMs = HAL_GetTick();
-    motorDuty          = MOTOR_MOVE_DUTY_PEACE;
+    static DetectedTarget lastSideDetected = DETECTED_TARGET_NONE;
+    uint32_t              currentMs        = HAL_GetTick();
+    motorDuty                              = MOTOR_MOVE_DUTY_PEACE;
 
     if (fightInfo.target != target) {
         switch (detectedTarget) {
             case DETECTED_TARGET_NONE:
                 // Check Timer?
+                if (lastSideDetected == DETECTED_TARGET_LEFT) {
+                    minisumo_move(ROBOT_MOVE_LEFT);
+                }
+                else {
+                    minisumo_move(ROBOT_MOVE_RIGHT);
+                }
                 break;
             case DETECTED_TARGET_CENTER:
                 motorDuty = MOTOR_MOVE_DUTY_WAR;
@@ -232,10 +335,12 @@ static uint8_t minisumo_handleTargetDetected(DetectedTarget target)
             case DETECTED_TARGET_LEFT:
                 fightInfo.lastDetectionMs = currentMs;
                 minisumo_move(ROBOT_MOVE_LEFT);
+                lastSideDetected = DETECTED_TARGET_LEFT;
                 break;
             case DETECTED_TARGET_RIGHT:
                 fightInfo.lastDetectionMs = currentMs;
                 minisumo_move(ROBOT_MOVE_RIGHT);
+                lastSideDetected = DETECTED_TARGET_LEFT;
                 break;
         }
     }
@@ -245,15 +350,20 @@ static uint8_t minisumo_handleTargetDetected(DetectedTarget target)
 
 static DetectedTarget minisumo_targetDetected(uint16_t sharp[3])
 {
-    snprintf(uartBuf, 150, "$%d;%d;%d;\r\n", sharp[0], sharp[1], sharp[2]);
-    HAL_UART_Transmit(&huart5, uartBuf, strlen(uartBuf), 1000);
+
     if (sharp[1] > 1000) {
+        snprintf((char*)uartBuf, 150, "$T(%lu):%d;%d;%d;\r\n", HAL_GetTick(), sharp[0], sharp[1], sharp[2]);
+        HAL_UART_Transmit(&huart5, uartBuf, strlen((char*)uartBuf), 1000);
         return DETECTED_TARGET_CENTER;
     }
     else if (sharp[0] > 1000) {
+        snprintf((char*)uartBuf, 150, "$T(%lu):%d;%d;%d;\r\n", HAL_GetTick(), sharp[0], sharp[1], sharp[2]);
+        HAL_UART_Transmit(&huart5, uartBuf, strlen((char*)uartBuf), 1000);
         return DETECTED_TARGET_LEFT;
     }
     else if (sharp[2] > 1000) {
+        snprintf((char*)uartBuf, 150, "$T(%lu):%d;%d;%d;\r\n", HAL_GetTick(), sharp[0], sharp[1], sharp[2]);
+        HAL_UART_Transmit(&huart5, uartBuf, strlen((char*)uartBuf), 1000);
         return DETECTED_TARGET_RIGHT;
     }
     return DETECTED_TARGET_NONE;
@@ -262,11 +372,13 @@ static DetectedTarget minisumo_targetDetected(uint16_t sharp[3])
 static DetectedLine minisumo_lineDetected(uint16_t line[2])
 {
     DetectedLine ret = DETECTED_LINE_NONE;
+    /*snprintf((char*)uartBuf, 150, "$L:%d;%d;\r\n", line[0], line[1]);
+    HAL_UART_Transmit(&huart5, uartBuf, strlen((char*)uartBuf), 1000);*/
 
-    if (line[0] < LINE_LEFT_LIMIT) {
+    if (line[0] < lineLimitCurrent[0]) {
         ret = DETECTED_LINE_LEFT;
     }
-    if (line[1] < LINE_RIGHT_LIMIT) {
+    if (line[1] < lineLimitCurrent[1]) {
         ret = (ret == DETECTED_LINE_LEFT) ? DETECTED_LINE_BOTH : DETECTED_LINE_RIGHT;
     }
 
@@ -315,6 +427,7 @@ static void state_start(void)
                 startStop = startstop_run(&pkt);
                 break;
             case ADDR_CUSTOM_PROG:
+                minisumo_configPkt(&pkt);
                 break;
             default:
                 status_setLed(LED_B, (Rgb){0, 20, 0});
@@ -341,30 +454,37 @@ static void state_start(void)
     // Cal sensor_isDataReady to cleanup ADC buffers.
     //sensors_isDataReady();
     if (sensors_isDataReady() == 1) {
-        sharp[0]       = sensors_get(SENSOR_SHARP_LEFT);
-        sharp[1]       = sensors_get(SENSOR_SHARP_CENTER);
-        sharp[2]       = sensors_get(SENSOR_SHARP_RIGHT);
-        line[0]        = sensors_get(SENSOR_LINE_LEFT);
-        line[1]        = sensors_get(SENSOR_LINE_RIGHT);
-        detectedLine   = minisumo_lineDetected(line);
-        detectedTarget = minisumo_targetDetected(sharp);
+        sharp[0]               = sensors_get(SENSOR_SHARP_LEFT);
+        sharp[1]               = sensors_get(SENSOR_SHARP_CENTER);
+        sharp[2]               = sensors_get(SENSOR_SHARP_RIGHT);
+        line[0]                = sensors_get(SENSOR_LINE_LEFT);
+        line[1]                = sensors_get(SENSOR_LINE_RIGHT);
+        detectedLine           = minisumo_lineDetected(line);
+        detectedTarget         = minisumo_targetDetected(sharp);
+        volatile uint16_t batt = sensors_getBattMv();
+        (void)batt;
     }
 
     uint32_t selectorValue            = sensors_readSelector();
     seekMoves[PATTERN_START].duration = 500;
+
+    // Front
     if (selectorValue < 1000) {
         StartMovement                      = START_FORWARD;
         seekMoves[PATTERN_START].direction = ROBOT_MOVE_FWD;
     }
+    // Left
     else if (selectorValue < 3200) {
         StartMovement                      = START_LEFT;
         seekMoves[PATTERN_START].direction = ROBOT_MOVE_LEFT;
     }
+    // Back
     else if (selectorValue < 2400) {
         StartMovement                      = START_RIGHT;
         seekMoves[PATTERN_START].duration  = 1000;
         seekMoves[PATTERN_START].direction = ROBOT_MOVE_RIGHT;
     }
+    // Right
     else {
         StartMovement                      = START_RIGHT;
         seekMoves[PATTERN_START].direction = ROBOT_MOVE_RIGHT;
@@ -464,16 +584,18 @@ static void state_fight(void)
         /*snprintf(uartBuf, 150, "Fight detected: %d\r\n", detectedTarget);
         HAL_UART_Transmit(&huart5, uartBuf, strlen(uartBuf), 1000);
         */
+        status_setLed(LED_A, (Rgb){0, 0, 0});
     }
     else {
+        status_setLed(LED_A, (Rgb){0, 0, 20});
         motorDuty = MOTOR_MOVE_DUTY_PEACE;
         minisumo_move(ROBOT_MOVE_BACK);
         HAL_Delay(100);
         fightInfo.target = DETECTED_TARGET_NONE;
         detectedLine     = DETECTED_LINE_NONE;
         minisumo_moveTarget(ROBOT_MOVE_STOP);
-        snprintf(uartBuf, 150, "FGIHT Reversing\r\n");
-        HAL_UART_Transmit(&huart5, uartBuf, strlen(uartBuf), 1000);
+        snprintf((char*)uartBuf, 150, "FGIHT Reversing\r\n");
+        HAL_UART_Transmit(&huart5, uartBuf, strlen((char*)uartBuf), 1000);
     }
 
     motor_update(&motorLeft);
@@ -481,8 +603,8 @@ static void state_fight(void)
 }
 static void state_set_fight(void)
 {
-    snprintf(uartBuf, 150, "FIGHT START\r\n");
-    HAL_UART_Transmit(&huart5, uartBuf, strlen(uartBuf), 1000);
+    snprintf((char*)uartBuf, 150, "FIGHT START\r\n");
+    HAL_UART_Transmit(&huart5, uartBuf, strlen((char*)uartBuf), 1000);
     status_rawLeds((Rgb){20, 0, 0}, (Rgb){0, 0, 20});
     currentStateFunc = state_fight;
     currentStateFunc();
@@ -533,7 +655,12 @@ void minisumo_setup(MinisumoConfig* config)
     ee_init(&eepromData, sizeof(eepromData));
     ee_read();
 
+    lineLimitCurrent[LEFT]  = eepromData.limitL;
+    lineLimitCurrent[RIGHT] = eepromData.limitR;
+
     snprintf(uartBuf, 150, "Dohyo ID: 0x%02X\r\n", eepromData.dohyoId);
+    HAL_UART_Transmit(&huart5, uartBuf, strlen(uartBuf), 1000);
+    snprintf(uartBuf, 150, "Loaded Lines: %d %d\r\n", eepromData.limitL, eepromData.limitR);
     HAL_UART_Transmit(&huart5, uartBuf, strlen(uartBuf), 1000);
 
     startstop_init();
@@ -551,13 +678,13 @@ void minisumo_setup(MinisumoConfig* config)
     motorLeft.currentSpeed    = 0;
     motorLeft.targetSpeed     = 0;
     motorLeft.targetDirection = MOTOR_DIRECTION_FWD;
-    motorLeft.maxRate         = 13;
+    motorLeft.maxRate         = 40;
     motor_init(&motorLeft);
     motorRight.init            = config->motorRight;
     motorRight.currentSpeed    = 0;
     motorRight.targetSpeed     = 0;
     motorRight.targetDirection = MOTOR_DIRECTION_FWD;
-    motorRight.maxRate         = 13;
+    motorRight.maxRate         = 40;
     motor_init(&motorRight);
 
     adc = config->adc;

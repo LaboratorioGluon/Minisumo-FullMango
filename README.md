@@ -10,6 +10,8 @@ Hecho 100% en directos de Twitch y Youtube, desde las pruebas de concepto, la el
 <img src="./Doc/imagen_3d.png" width="400" alt="Imagen 3D">
 </p>
 
+
+
 # :wrench: Componentes Principales :wrench:
 - **PCB** : Diseño propio hecho en KiCAD, proyecto en carpeta `Schematics/MinisumoV2/`
 - **Estructura:** Para añadir peso y consistencia esta basado en placas perforadas de acero cincado.
@@ -38,6 +40,14 @@ El robot minisumo FullMango se basa en un control por máquina de estados. Siend
 
 Para el control de motores se ha implementado una doble rampa de cara a intentar resolver el problema de los caballitos: los motores son muy potentes y si pasamos al 80% de golpe, el **robot se da la vuelta**.
 
+# Configuracion
+
+| Pin     | Function |
+| ------- | -------- |
+| Ninguno | FWD      |
+| 1       | RIGHT    |
+| 2       | LEFT     |
+| 3       | BACK     |
 
 # Otros enlaces
 

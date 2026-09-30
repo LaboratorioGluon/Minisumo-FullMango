@@ -23,4 +23,6 @@ uint8_t  sensors_isDataReady();
 uint32_t sensors_readSelector();
 uint16_t sensors_get(SensorResult sensor);
 
+uint16_t sensors_getBattMv();
+
 #endif  //SENSORS_H__

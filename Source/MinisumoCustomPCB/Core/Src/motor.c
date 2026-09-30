@@ -51,6 +51,7 @@ void motor_setDuty(Motor* dev, MotorDirection dir, uint32_t duty)
 
 void motor_setTarget(Motor* dev, MotorDirection dir, uint32_t dutyTarget)
 {
+    dev->forcedMove  = 0;
     dev->targetSpeed = dutyTarget;
     if (dir != dev->targetDirection) {
         dev->currentSpeed = 0;
@@ -63,11 +64,21 @@ void motor_setTarget(Motor* dev, MotorDirection dir, uint32_t dutyTarget)
     return;
 }
 
+void motor_setForced(Motor* dev, MotorDirection dir, uint32_t dutyTarget)
+{
+    dev->forcedMove = 1;
+    motor_setDuty(dev, dir, dutyTarget);
+}
+
 extern UART_HandleTypeDef huart5;
 static uint8_t            uartBuf[200];
 
 void motor_update(Motor* dev)
 {
+    // On forced move, dont use interpolation.
+    if (dev->forcedMove == 1) {
+        return;
+    }
     uint32_t currentMs = HAL_GetTick();
     uint32_t deltaTms  = currentMs - dev->startMs;
     if (dev->currentSpeed == dev->targetSpeed) {
@@ -78,10 +89,12 @@ void motor_update(Motor* dev)
     if (dev->currentSpeed >= dev->targetSpeed) {
         dev->currentSpeed = dev->targetSpeed;
     }
+    /*else {
+        snprintf((char*)uartBuf, 150, "$M:%lu,%lu;%lu;\r\n", currentMs, dev->startMs, dev->currentSpeed);
+        HAL_UART_Transmit(&huart5, uartBuf, strlen((char*)uartBuf), 1000);
+    }*/
     motor_setDuty(dev, dev->targetDirection, dev->currentSpeed);
-    /*snprintf((char*)uartBuf, 150, "$%lu,%lu;%lu;\r\n", currentMs, dev->lastMs, dev->currentSpeed);
 
-    HAL_UART_Transmit(&huart5, uartBuf, strlen((char*)uartBuf), 1000);*/
     dev->lastMs = currentMs;
 
     return;
