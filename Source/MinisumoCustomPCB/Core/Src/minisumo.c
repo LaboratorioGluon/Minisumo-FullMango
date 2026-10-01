@@ -415,6 +415,7 @@ static void state_set_seek(void)
 */
 static void state_start(void)
 {
+    static uint8_t prevLine = DETECTED_LINE_NONE;
     static uint8_t firstRun = true;
     Rc5Packet      pkt;
     Rc5Ret         ret       = rc5_getPkt(&rc5, &pkt);
@@ -431,6 +432,8 @@ static void state_start(void)
                 break;
             default:
                 status_setLed(LED_B, (Rgb){0, 20, 0});
+                HAL_Delay(1000);
+                status_setLed(LED_B, (Rgb){0, 0, 0});
                 break;
         }
 
@@ -463,6 +466,18 @@ static void state_start(void)
         detectedTarget         = minisumo_targetDetected(sharp);
         volatile uint16_t batt = sensors_getBattMv();
         (void)batt;
+    }
+
+    // Test line
+    if (prevLine != detectedLine) {
+        if (detectedLine != DETECTED_LINE_NONE) {
+
+            status_setLed(LED_B, (Rgb){0, 0, 20});
+        }
+        else {
+            status_setLed(LED_B, (Rgb){0, 0, 0});
+        }
+        prevLine = detectedLine;
     }
 
     uint32_t selectorValue            = sensors_readSelector();

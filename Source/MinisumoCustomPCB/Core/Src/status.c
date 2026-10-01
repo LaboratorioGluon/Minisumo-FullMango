@@ -12,7 +12,7 @@
 static WsLed    leds;
 static uint16_t pwmData[STATUS_NUM_LEDS * BITS_PER_LED + PWM_NUM_TAIL_BIT];
 
-Rgb colors[STATUS_NUM_LEDS] = {{5, 0, 0}, {5, 0, 0}};
+Rgb colors[STATUS_NUM_LEDS] = {{0, 0, 0}, {0, 0, 0}};
 
 static void status_outputData()
 {
